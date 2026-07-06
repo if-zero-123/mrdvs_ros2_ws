@@ -37,7 +37,7 @@ def generate_launch_description():
             {"LX_BOOL_ENABLE_2D_STREAM": 1},
             {"LX_BOOL_ENABLE_IMU": 0},
             #<!-- 0:mm,  1:m-->
-            {"LX_INT_XYZ_UNIT": 0},
+            {"LX_INT_XYZ_UNIT": 1},
 
             # <!-- 2D配置，如需生效，取消其注释 -->
             #{"LX_INT_RGBD_ALIGN_MODE": 1},
