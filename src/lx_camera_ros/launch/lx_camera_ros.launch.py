@@ -40,7 +40,7 @@ def generate_launch_description():
             {"LX_INT_XYZ_UNIT": 1},
 
             # <!-- 2D配置，如需生效，取消其注释 -->
-            #{"LX_INT_RGBD_ALIGN_MODE": 1},
+            {"LX_INT_RGBD_ALIGN_MODE": 1},
             #{"LX_INT_ALGORITHM_MODE": 0},
             #{"LX_INT_WORK_MODE": 0},
             #{"LX_INT_3D_FPS": 20},
@@ -61,9 +61,10 @@ def generate_launch_description():
             {"x": 0.0},
             {"y": 0.0},
             {"z": 0.0},
-            {"roll": 0.0},
+            # optical frame: X right, Y down, Z forward -> base_link: X forward, Y left, Z up
+            {"roll": -90.0},
             {"pitch": 0.0},
-            {"yaw": 0.0}
+            {"yaw": -90.0}
             ]
     ),
 
