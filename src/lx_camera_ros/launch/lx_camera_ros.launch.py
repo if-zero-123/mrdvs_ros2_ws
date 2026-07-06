@@ -35,7 +35,10 @@ def generate_launch_description():
             {"is_xyz": 1},
             {"LX_BOOL_ENABLE_3D_AMP_STREAM": 0},
             {"LX_BOOL_ENABLE_2D_STREAM": 1},
-            {"LX_BOOL_ENABLE_IMU": 0},
+            {"LX_BOOL_ENABLE_IMU": 1},
+            #<!-- imu range,[0,3],[0,4]-->
+            {"LX_INT_IMU_ACCELERATION_LEVEL": 0},
+            {"LX_INT_IMU_ANGULAR_RANGE_LEVEL": 0},
             #<!-- 0:mm,  1:m-->
             {"LX_INT_XYZ_UNIT": 1},
 
