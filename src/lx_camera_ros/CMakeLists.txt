@@ -29,6 +29,9 @@ find_package(rosidl_default_generators REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+if(BUILD_TESTING)
+find_package(ament_cmake_gtest REQUIRED)
+endif()
 
 rosidl_generate_interfaces(${PROJECT_NAME}
 "msg/ObstacleBox.msg"
@@ -72,6 +75,9 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 link_directories(${OpenCV_DIR})
 message(STATUS "OPENCV_VERSION " ${OpenCV_VERSION})
 
+set(IMU_EXTRINSIC_FORMAT_SRC
+				${PROJECT_SOURCE_DIR}/src/tools/imu_extrinsic_format.cpp)
+
 set(TARGET_NAME lx_camera_node)
 add_executable(${TARGET_NAME}
 				${PROJECT_SOURCE_DIR}/src/lx_camera/lx_camera.cpp 
@@ -101,6 +107,24 @@ add_executable(${TARGET_NAME}
 				${PROJECT_SOURCE_DIR}/src/lx_localization/sensor_sim_node.cpp)
 ament_target_dependencies(${TARGET_NAME} ${dependencies})
 install(TARGETS ${TARGET_NAME} EXPORT export_${PROJECT_NAME} DESTINATION lib/${PROJECT_NAME})
+
+set(TARGET_NAME read_imu_extrinsic)
+add_executable(${TARGET_NAME}
+				${PROJECT_SOURCE_DIR}/src/tools/read_imu_extrinsic.cpp
+				${IMU_EXTRINSIC_FORMAT_SRC}
+				${PROJECT_SOURCE_DIR}/src/utils/dynamic_link.cpp)
+target_include_directories(${TARGET_NAME} PRIVATE
+				${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(${TARGET_NAME} ${CMAKE_DL_LIBS})
+install(TARGETS ${TARGET_NAME} EXPORT export_${PROJECT_NAME} DESTINATION lib/${PROJECT_NAME})
+
+if(BUILD_TESTING)
+ament_add_gtest(test_imu_extrinsic_format
+				test/test_imu_extrinsic_format.cpp
+				${IMU_EXTRINSIC_FORMAT_SRC})
+target_include_directories(test_imu_extrinsic_format PRIVATE
+				${PROJECT_SOURCE_DIR}/src)
+endif()
 
 
 install(DIRECTORY

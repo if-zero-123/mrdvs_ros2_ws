@@ -110,12 +110,39 @@ p_imu = r_il * p_lidar + t_il
 
 实际建图前需要用 SDK `LX_PTR_IMU_EXTRIC_PARAM` 或离线标定结果确认该方向后再填入，否则容易出现漂移、姿态错误或无法初始化。
 
+### 读取 SDK IMU 外参
+
+`lx_camera_ros` 提供一个独立命令行工具，用于通过 SDK 读取 `LX_PTR_IMU_EXTRIC_PARAM`。SDK 注释说明该参数为 12 个 `float`：前 9 个是旋转矩阵，后 3 个是平移向量。工具会原样打印 SDK 数值，同时输出一个便于和 `fastlio2/config/mrdvs.yaml` 对照的 YAML 候选片段；如果 SDK 返回全 0，工具会提示这不是有效旋转矩阵，不能直接作为外参使用。
+
+构建并加载环境：
+
+```bash
+colcon build --packages-select lx_camera_ros
+source install/setup.bash
+```
+
+读取默认设备索引 `0`：
+
+```bash
+ros2 run lx_camera_ros read_imu_extrinsic
+```
+
+或指定设备索引 / IP：
+
+```bash
+ros2 run lx_camera_ros read_imu_extrinsic 0
+ros2 run lx_camera_ros read_imu_extrinsic 192.168.1.10
+```
+
+注意：SDK 打开设备是独占的。如果 `lx_camera_node` 或其他 SDK 程序正在运行，读取工具可能打不开设备；先停止相机节点，必要时等待几秒让 SDK 心跳释放权限。该工具不会自动转换平移单位，也不会自动写入 FAST-LIO2 配置；需要先确认 SDK 外参方向和单位后再使用。
+
 ## Codex 工作规则
 
 当前工作空间的 Codex 用户规则写在 `AGENTS.md`。后续 Codex 在本目录内工作时，应先读取并遵循该文件。
 
 ## 更新记录
 
+- 2026-07-06：新增 `read_imu_extrinsic` 工具，通过 SDK 读取 `LX_PTR_IMU_EXTRIC_PARAM`，打印 IMU 外参原始 12 个 float、旋转矩阵、平移向量和 YAML 候选片段，并检测全 0 无效外参，用于后续与标定结果对比。
 - 2026-07-06：接入 `liangheming/FASTLIO2_ROS2` 的 `fastlio2` 主里程计包，移除 Livox 消息依赖，适配 MRDVS 的 `PointCloud2` 点云和 IMU 话题，新增 `mrdvs.yaml` 与 `mrdvs_lio_launch.py`。
 - 2026-07-06：新增 `record_bag.sh`，支持传入 bag 名称并将所有 ROS2 话题录制到 `~/bag/<bag_name>`。
 - 2026-07-06：开启 `lx_camera_ros.launch.py` 的 `LX_BOOL_ENABLE_IMU`，并补充 IMU 加速度与角速度量程默认参数，使 `/lx_camera_node/LxCamera_Imu` 能在重启 launch 后输出数据。

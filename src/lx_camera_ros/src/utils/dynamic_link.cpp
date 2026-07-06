@@ -27,9 +27,11 @@ bool DynamicLink(DcLib *lib) {
  	printf("dlopen error %s\n",e.what());
  	return false;
  }
-  //while (!handle) {
-  //  std::cout << "Load lib failed: " << dlerror() << std::endl;
-  //}
+  if (!handle) {
+    std::cout << "Load lib failed: " << dlerror() << std::endl;
+    return false;
+  }
+  lib->handle = handle;
   std::cout << "Dynamic link libLxCameraApi.so success!" << std::endl;
 
   lib->DcGetApiVersion = (const char *(*)())dlsym(handle, "DcGetApiVersion");
