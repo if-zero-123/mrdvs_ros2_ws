@@ -16,15 +16,20 @@
 
  <!-- Build dependencies -->
  <build_depend>rclcpp</build_depend>
- <build_depend>cmake_modules</build_depend> <!-- for FindEigen.cmake module -->
+ <build_depend>libopencv-dev</build_depend>
+ <build_depend>eigen</build_depend>
+ <build_depend>sophus</build_depend>
+ <build_depend>fmt</build_depend>
  
  <!-- Run dependencies -->
  <exec_depend>rclcpp</exec_depend>
+ <exec_depend>libopencv-dev</exec_depend>
+ <exec_depend>eigen</exec_depend>
+ <exec_depend>sophus</exec_depend>
+ <exec_depend>fmt</exec_depend>
 
  <!-- The export tag contains other, unspecified, tags -->
  <export>
-   <!-- You can specify that this package is a metapackage here: -->
-   <!-- <metapackage/> -->
-   <!-- Other tools can request additional information be placed here -->
+   <build_type>ament_cmake</build_type>
  </export>
 </package>

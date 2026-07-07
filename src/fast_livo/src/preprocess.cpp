@@ -11,6 +11,7 @@ which is included as part of this source code package.
 */
 
 #include "preprocess.h"
+#include "mrdvs_time_utils.h"
 
 #define RETURN0 0x00
 #define RETURN0AND1 0x10
@@ -51,11 +52,13 @@ void Preprocess::set(bool feat_en, int lid_type, double bld, int pfilt_num)
   point_filter_num = pfilt_num;
 }
 
+#ifdef FAST_LIVO_ENABLE_LIVOX
 void Preprocess::process(const livox_ros_driver2::msg::CustomMsg::SharedPtr &msg, PointCloudXYZI::Ptr &pcl_out)
 {
   avia_handler(msg);
   *pcl_out = pl_surf;
 }
+#endif
 
 void Preprocess::process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg, PointCloudXYZI::Ptr &pcl_out)
 {
@@ -85,6 +88,10 @@ void Preprocess::process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &ms
     robosense_handler(msg);
     break;
 
+  case MRDVS:
+    mrdvs_handler(msg);
+    break;
+
   default:
     printf("Error LiDAR Type: %d \n", lidar_type);
     break;
@@ -92,6 +99,7 @@ void Preprocess::process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &ms
   *pcl_out = pl_surf;
 }
 
+#ifdef FAST_LIVO_ENABLE_LIVOX
 void Preprocess::avia_handler(const livox_ros_driver2::msg::CustomMsg::SharedPtr &msg)
 {
   pl_surf.clear();
@@ -199,6 +207,7 @@ void Preprocess::avia_handler(const livox_ros_driver2::msg::CustomMsg::SharedPtr
   }
   printf("[ Preprocess ] Output point number: %zu \n", pl_surf.points.size());
 }
+#endif
 
 void Preprocess::l515_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg)
 {
@@ -738,6 +747,47 @@ void Preprocess::robosense_handler(const sensor_msgs::msg::PointCloud2::ConstSha
     added_pt.curvature = (pt.timestamp - time_head) * 1000.0;
     pl_surf.points.push_back(added_pt);
   }
+  std::sort(pl_surf.points.begin(), pl_surf.points.end(), [](const PointType &a, const PointType &b) {
+    return a.curvature < b.curvature;
+  });
+}
+
+void Preprocess::mrdvs_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg)
+{
+  pl_surf.clear();
+
+  pcl::PointCloud<mrdvs_ros::Point> pl_orig;
+  pcl::fromROSMsg(*msg, pl_orig);
+  const int plsize = pl_orig.size();
+  if (plsize == 0) return;
+
+  pl_surf.reserve(plsize);
+  const double cloud_start_sec = stamp2Sec(msg->header.stamp);
+
+  for (int i = 0; i < plsize; ++i)
+  {
+    if (i % point_filter_num != 0) continue;
+
+    const auto &pt = pl_orig.points[i];
+    const double x = pt.x;
+    const double y = pt.y;
+    const double z = pt.z;
+    const double dist_sqr = x * x + y * y + z * z;
+    const bool is_valid = (dist_sqr >= blind_sqr) && std::isfinite(x) && std::isfinite(y) && std::isfinite(z);
+    if (!is_valid) continue;
+
+    PointType added_pt;
+    added_pt.normal_x = 0;
+    added_pt.normal_y = 0;
+    added_pt.normal_z = 0;
+    added_pt.x = pt.x;
+    added_pt.y = pt.y;
+    added_pt.z = pt.z;
+    added_pt.intensity = static_cast<float>(pt.intensity);
+    added_pt.curvature = fast_livo::mrdvsTimestampToRelativeMs(pt.timestamp, cloud_start_sec);
+    pl_surf.points.push_back(added_pt);
+  }
+
   std::sort(pl_surf.points.begin(), pl_surf.points.end(), [](const PointType &a, const PointType &b) {
     return a.curvature < b.curvature;
   });

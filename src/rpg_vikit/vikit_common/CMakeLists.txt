@@ -1,110 +1,64 @@
-SET(PROJECT_NAME vikit_common)
-PROJECT(${PROJECT_NAME})
-CMAKE_MINIMUM_REQUIRED (VERSION 3.0)
-SET(CMAKE_BUILD_TYPE Release) # Release, RelWithDebInfo
-SET(CMAKE_VERBOSE_MAKEFILE OFF)
-SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/CMakeModules/")
-SET(USE_ROS False) # Set False if you want to build this package without Catkin
+cmake_minimum_required(VERSION 3.5)
+project(vikit_common)
 
-# Set build flags. Set IS_ARM on odroid board as environment variable
-SET(CMAKE_CXX_FLAGS "-Wall -D_LINUX -D_REENTRANT -march=native -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unknown-pragmas")
-IF(DEFINED ENV{ARM_ARCHITECTURE})
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon -march=armv8-a")
-ELSE()
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mmmx -msse -msse -msse2 -msse3 -mssse3")
-ENDIF()
-message("Current CPU archtecture: ${CMAKE_SYSTEM_PROCESSOR}")
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)" )
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mmmx -msse -msse -msse2 -msse3 -mssse3")
-else()
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8-a")
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
 endif()
 
-IF(CMAKE_COMPILER_IS_GNUCC)
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
-ELSE()
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-ENDIF()
-SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O3 -fsee -fomit-frame-pointer -fno-signed-zeros -fno-math-errno -funroll-loops")
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+add_compile_options(-Wall -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unknown-pragmas)
 
-# Add plain cmake packages 
-FIND_PACKAGE(OpenCV REQUIRED)
-FIND_PACKAGE(Eigen REQUIRED)
-FIND_PACKAGE(Sophus REQUIRED)
-FIND_PACKAGE(fmt REQUIRED)
+find_package(ament_cmake REQUIRED)
+find_package(OpenCV REQUIRED)
+find_package(Eigen3 REQUIRED)
+find_package(Sophus REQUIRED)
+find_package(fmt REQUIRED)
 
-# Include dirs
-INCLUDE_DIRECTORIES(
-  include
-  ${Eigen_INCLUDE_DIRS}
-  ${OpenCV_INCLUDE_DIRS}
-  ${Sophus_INCLUDE_DIRS}
-  fmt
+set(SOURCEFILES
+  src/atan_camera.cpp
+  src/omni_camera.cpp
+  src/math_utils.cpp
+  src/vision.cpp
+  src/performance_monitor.cpp
+  src/robust_cost.cpp
+  src/user_input_thread.cpp
+  src/pinhole_camera.cpp
+  src/equidistant_camera.cpp
+  src/polynomial_camera.cpp
+  src/homography.cpp
+  src/img_align.cpp
 )
 
-IF(USE_ROS)
-  FIND_PACKAGE(catkin REQUIRED COMPONENTS roscpp cmake_modules)
-  LIST(APPEND INCLUDE_DIRECTORIES ${catkin_INCLUDE_DIRS})
-  catkin_package(
-    DEPENDS Eigen OpenCV Sophus
-    CATKIN_DEPENDS roscpp
-    INCLUDE_DIRS include
-    LIBRARIES ${PROJECT_NAME}
-  )
-ELSE()
-  SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
-  SET(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
-ENDIF()
+add_library(${PROJECT_NAME} SHARED ${SOURCEFILES})
 
-# Set Sourcefiles
-LIST(APPEND SOURCEFILES src/atan_camera.cpp
-                        src/omni_camera.cpp
-                        src/math_utils.cpp
-                        src/vision.cpp
-                        src/performance_monitor.cpp
-                        src/robust_cost.cpp
-                        src/user_input_thread.cpp
-                        src/pinhole_camera.cpp
-                        src/equidistant_camera.cpp
-                        src/polynomial_camera.cpp
-                        src/homography.cpp
-                        src/img_align.cpp)
+target_include_directories(${PROJECT_NAME} PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  ${OpenCV_INCLUDE_DIRS}
+)
 
-# Create vikit library
-ADD_LIBRARY(${PROJECT_NAME} SHARED ${SOURCEFILES})
-TARGET_LINK_LIBRARIES(${PROJECT_NAME}
+target_link_libraries(${PROJECT_NAME} PUBLIC
+  Eigen3::Eigen
+  Sophus::Sophus
+  fmt::fmt
   ${OpenCV_LIBS}
-  ${Sophus_LIBRARIES}
-  fmt::fmt)
+)
 
-IF(USE_ROS)
-  TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${catkin_LIBRARIES})
-ENDIF()
+install(TARGETS ${PROJECT_NAME}
+  EXPORT export_${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+  INCLUDES DESTINATION include
+)
 
-# Tests
-ADD_EXECUTABLE(test_vk_common_camera test/test_camera.cpp)
-TARGET_LINK_LIBRARIES(test_vk_common_camera ${PROJECT_NAME} ${OpenCV_LIBS})
+install(DIRECTORY include/
+  DESTINATION include
+)
 
-ADD_EXECUTABLE(test_vk_common_triangulation test/test_triangulation.cpp)
-TARGET_LINK_LIBRARIES(test_vk_common_triangulation ${PROJECT_NAME} ${OpenCV_LIBS})
-
-ADD_EXECUTABLE(test_vk_common_patch_score test/test_patch_score.cpp)
-TARGET_LINK_LIBRARIES(test_vk_common_patch_score ${PROJECT_NAME} ${OpenCV_LIBS})
-
-
-################################################################################
-# Create the vikit_commonConfig.cmake file for other cmake projects.
-IF(NOT USE_ROS)
-  # In CMake 3.6 and later, reading the LOCATION property from a target is no longer allowed.
-  # GET_TARGET_PROPERTY( FULL_LIBRARY_NAME ${PROJECT_NAME} LOCATION )
-  set(VIKIT_COMMON_LOCATION $<TARGET_FILE:vikit_common>)
-  SET(vikit_common_LIBRARIES ${FULL_LIBRARY_NAME} )
-  SET(vikit_common_LIBRARY_DIR ${PROJECT_BINARY_DIR} )
-  SET(vikit_common_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include")
-  CONFIGURE_FILE( ${CMAKE_CURRENT_SOURCE_DIR}/vikit_commonConfig.cmake.in
-      ${CMAKE_CURRENT_BINARY_DIR}/vikit_commonConfig.cmake @ONLY IMMEDIATE )
-  export( PACKAGE vikit_common )
-
-  INSTALL(DIRECTORY include/vikit DESTINATION ${CMAKE_INSTALL_PREFIX}/include FILES_MATCHING PATTERN "*.h" )
-  INSTALL(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib )
-ENDIF()
+ament_export_include_directories(include)
+ament_export_libraries(${PROJECT_NAME})
+ament_export_dependencies(Eigen3 OpenCV Sophus fmt)
+ament_package()

@@ -83,10 +83,8 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
-find_package(pcl_ros REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(tf2_ros REQUIRED)
-find_package(livox_ros_driver2 REQUIRED)
 find_package(vikit_common REQUIRED)
 find_package(vikit_ros REQUIRED)
 find_package(cv_bridge REQUIRED)
@@ -97,6 +95,12 @@ find_package(OpenCV REQUIRED)
 find_package(Sophus REQUIRED)
 find_package(Boost REQUIRED COMPONENTS thread)
 find_package(fmt REQUIRED)
+
+option(FAST_LIVO_ENABLE_LIVOX "Build Livox CustomMsg input support" OFF)
+if(FAST_LIVO_ENABLE_LIVOX)
+  find_package(livox_ros_driver2 REQUIRED)
+  add_compile_definitions(FAST_LIVO_ENABLE_LIVOX)
+endif()
 
 # Include directories for dependencies
 include_directories(
@@ -120,13 +124,15 @@ set(dependencies
   vikit_common
   vikit_ros
   image_transport
-  pcl_ros
   pcl_conversions
   tf2_ros
-  livox_ros_driver2
 )
 
-set(COMMON_DEPENDENCIES OpenMP::OpenMP_CXX fmt::fmt)
+if(FAST_LIVO_ENABLE_LIVOX)
+  list(APPEND dependencies livox_ros_driver2)
+endif()
+
+set(COMMON_DEPENDENCIES OpenMP::OpenMP_CXX fmt::fmt Sophus::Sophus Eigen3::Eigen)
 
 # link_directories(${COMMON_DEPENDENCIES}
 #   ${vikit_common_LIBRARIES}/libvikit_common.so
@@ -192,6 +198,17 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(test_mrdvs_time_utils
+    test/test_mrdvs_time_utils.cpp
+  )
+  target_include_directories(test_mrdvs_time_utils PRIVATE
+    include
+  )
+endif()
+
 # Export dependencies
 ament_export_dependencies(
   rclcpp
@@ -199,10 +216,8 @@ ament_export_dependencies(
   geometry_msgs
   nav_msgs
   sensor_msgs
-  pcl_ros
   pcl_conversions
   tf2_ros
-  livox_ros_driver2
   Eigen3
   PCL
   OpenCV 

@@ -1,0 +1,65 @@
+#!/usr/bin/python3
+
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+
+
+def generate_launch_description():
+    config_file_dir = os.path.join(get_package_share_directory("fast_livo"), "config")
+    rviz_config_file = os.path.join(get_package_share_directory("fast_livo"), "rviz_cfg", "fast_livo2.rviz")
+
+    mrdvs_config = os.path.join(config_file_dir, "mrdvs.yaml")
+    camera_config = os.path.join(config_file_dir, "camera_mrdvs.yaml")
+
+    use_rviz_arg = DeclareLaunchArgument(
+        "use_rviz",
+        default_value="False",
+        description="Whether to launch RViz2",
+    )
+    mrdvs_config_arg = DeclareLaunchArgument(
+        "mrdvs_params_file",
+        default_value=mrdvs_config,
+        description="FAST-LIVO2 parameter file for MRDVS",
+    )
+    camera_config_arg = DeclareLaunchArgument(
+        "camera_params_file",
+        default_value=camera_config,
+        description="Camera parameter file loaded into parameter_blackboard",
+    )
+
+    mrdvs_params_file = LaunchConfiguration("mrdvs_params_file")
+    camera_params_file = LaunchConfiguration("camera_params_file")
+
+    return LaunchDescription([
+        use_rviz_arg,
+        mrdvs_config_arg,
+        camera_config_arg,
+        Node(
+            package="demo_nodes_cpp",
+            executable="parameter_blackboard",
+            name="parameter_blackboard",
+            parameters=[camera_params_file],
+            output="screen",
+        ),
+        Node(
+            package="fast_livo",
+            executable="fastlivo_mapping",
+            name="laserMapping",
+            parameters=[mrdvs_params_file],
+            output="screen",
+        ),
+        Node(
+            condition=IfCondition(LaunchConfiguration("use_rviz")),
+            package="rviz2",
+            executable="rviz2",
+            name="rviz2",
+            arguments=["-d", rviz_config_file],
+            output="screen",
+        ),
+    ])

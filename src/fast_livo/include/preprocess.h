@@ -14,7 +14,9 @@ which is included as part of this source code package.
 #define PREPROCESS_H_
 
 #include "common_lib.h"
+#ifdef FAST_LIVO_ENABLE_LIVOX
 #include <livox_ros_driver2/msg/custom_msg.hpp>
+#endif
 #include <pcl_conversions/pcl_conversions.h>
 
 using namespace std;
@@ -147,6 +149,24 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(robosense_ros::Point,
                                   (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(double, timestamp, timestamp)(std::uint16_t, ring, ring))
 /*****************/
 
+/*** MRDVS ToF/LiDAR point cloud ***/
+namespace mrdvs_ros
+{
+struct EIGEN_ALIGN16 Point
+{
+  PCL_ADD_POINT4D;
+  std::uint32_t intensity;
+  double timestamp;
+  std::uint16_t row_pos;
+  std::uint16_t col_pos;
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
+} // namespace mrdvs_ros
+POINT_CLOUD_REGISTER_POINT_STRUCT(mrdvs_ros::Point,
+                                  (float, x, x)(float, y, y)(float, z, z)(std::uint32_t, intensity, intensity)
+                                  (double, timestamp, timestamp)(std::uint16_t, row_pos, row_pos)(std::uint16_t, col_pos, col_pos))
+/*****************/
+
 class Preprocess
 {
 public:
@@ -155,7 +175,9 @@ public:
   Preprocess();
   ~Preprocess();
 
+#ifdef FAST_LIVO_ENABLE_LIVOX
   void process(const livox_ros_driver2::msg::CustomMsg::SharedPtr &msg, PointCloudXYZI::Ptr &pcl_out);
+#endif
   void process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
 
@@ -172,12 +194,15 @@ public:
   std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> pub_corn;
 
 private:
+#ifdef FAST_LIVO_ENABLE_LIVOX
   void avia_handler(const livox_ros_driver2::msg::CustomMsg::SharedPtr &msg);
+#endif
   void oust64_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
   void velodyne_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
   void xt32_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
   void Pandar128_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
   void robosense_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
+  void mrdvs_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
   void l515_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
   void give_feature(PointCloudXYZI &pl, vector<orgtype> &types);
   void pub_func(PointCloudXYZI &pl, const rclcpp::Time &ct);

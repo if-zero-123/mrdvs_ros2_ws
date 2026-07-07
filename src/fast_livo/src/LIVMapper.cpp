@@ -258,11 +258,18 @@ void LIVMapper::initializeFiles()
 void LIVMapper::initializeSubscribersAndPublishers(rclcpp::Node::SharedPtr &node, image_transport::ImageTransport &it_)
 {
   image_transport::ImageTransport it(this->node);
+#ifdef FAST_LIVO_ENABLE_LIVOX
   if (p_pre->lidar_type == AVIA) {
     sub_pcl = this->node->create_subscription<livox_ros_driver2::msg::CustomMsg>(lid_topic, 200000, std::bind(&LIVMapper::livox_pcl_cbk, this, std::placeholders::_1));
   } else {
     sub_pcl = this->node->create_subscription<sensor_msgs::msg::PointCloud2>(lid_topic, 200000, std::bind(&LIVMapper::standard_pcl_cbk, this, std::placeholders::_1));
   }
+#else
+  if (p_pre->lidar_type == AVIA) {
+    RCLCPP_WARN(this->node->get_logger(), "Livox CustomMsg support is disabled; subscribing to PointCloud2 instead.");
+  }
+  sub_pcl = this->node->create_subscription<sensor_msgs::msg::PointCloud2>(lid_topic, 200000, std::bind(&LIVMapper::standard_pcl_cbk, this, std::placeholders::_1));
+#endif
   sub_imu = this->node->create_subscription<sensor_msgs::msg::Imu>(imu_topic, 200000, std::bind(&LIVMapper::imu_cbk, this, std::placeholders::_1));
   sub_img = this->node->create_subscription<sensor_msgs::msg::Image>(img_topic, 200000, std::bind(&LIVMapper::img_cbk, this, std::placeholders::_1));
   
@@ -800,6 +807,7 @@ void LIVMapper::standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::ConstShare
   sig_buffer.notify_all();
 }
 
+#ifdef FAST_LIVO_ENABLE_LIVOX
 void LIVMapper::livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg_in)
 {
   if (!lidar_en) return;
@@ -842,6 +850,7 @@ void LIVMapper::livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::ConstShar
   mtx_buffer.unlock();
   sig_buffer.notify_all();
 }
+#endif
 
 void LIVMapper::imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr &msg_in)
 {

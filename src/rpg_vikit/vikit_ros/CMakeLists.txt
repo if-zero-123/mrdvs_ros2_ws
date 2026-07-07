@@ -83,7 +83,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 )
 
 target_link_libraries(${PROJECT_NAME}
-  ${cpp_typesupport_target}
+  Sophus::Sophus
+  ${OpenCV_LIBS}
 )
 
 ament_target_dependencies(${PROJECT_NAME} ${dependencies})
