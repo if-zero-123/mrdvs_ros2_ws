@@ -16,3 +16,20 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
+
+# manage-git-projects safety ignores
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+node_modules/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+coverage/
