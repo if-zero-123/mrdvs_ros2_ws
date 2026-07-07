@@ -16,10 +16,12 @@ cube_len: 300
 det_range: 60
 move_thresh: 1.5
 
-na: 0.01
-ng: 0.01
-nba: 0.0001
-nbg: 0.0001
+# MRDVS IMU Allan calibration, avg-axis.
+# acc_n: m/s^2, gyr_n: rad/s, acc_w: m/s^2, gyr_w: rad/s.
+na: 2.0348936872780068e-02
+ng: 2.3162072810468197e-03
+nba: 4.5452036338894608e-04
+nbg: 2.3553527673141791e-05
 
 imu_init_num: 60
 near_search_num: 5
