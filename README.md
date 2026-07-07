@@ -76,11 +76,37 @@ colcon build --packages-select lx_camera_ros fastlio2
 source install/setup.bash
 ```
 
-先启动 MRDVS 的 LiDAR 模式。这个 launch 会发布带强度和时间戳字段的 `/lx_camera_node/LxCamera_Cloud`，并发布 `/lx_camera_node/LxCamera_Imu`：
+推荐直接启动 MRDVS + FAST-LIO2 一体 launch。它会先用固定 IP `192.168.100.82` 启动 MRDVS 的 LiDAR 模式，等待 `fastlio_delay` 秒后再启动 FAST-LIO2，默认打开 FAST-LIO2 的 RViz，并默认使用精细配置 `mrdvs_refined.yaml`：
+
+```bash
+ros2 launch fastlio2 mrdvs_full_launch.py
+```
+
+如需调整固定 IP、等待时间或关闭 RViz：
+
+```bash
+ros2 launch fastlio2 mrdvs_full_launch.py camera_ip:=192.168.100.82 fastlio_delay:=5.0 enable_rviz:=false
+```
+
+如果现场 CPU 占用过高或想切回稳定基线参数：
+
+```bash
+ros2 launch fastlio2 mrdvs_full_launch.py config_file:=mrdvs.yaml
+```
+
+分步调试时，可以先启动 MRDVS 的 LiDAR 模式。这个 launch 默认固定连接 `192.168.100.82`，不会先枚举设备；它会发布带强度和时间戳字段的 `/lx_camera_node/LxCamera_Cloud`，并发布 `/lx_camera_node/LxCamera_Imu`：
 
 ```bash
 ros2 launch lx_camera_ros lx_lidar_ros.launch.py enable_rviz:=false
 ```
+
+如需临时切换设备 IP：
+
+```bash
+ros2 launch lx_camera_ros lx_lidar_ros.launch.py ip:=192.168.100.82 enable_rviz:=false
+```
+
+如需恢复按索引/枚举方式打开设备，可传入短索引值，例如 `ip:=0`；固定 IP 模式下驱动会跳过 `DcGetDeviceList()` 枚举等待，直接调用 SDK 按 IP 打开设备。
 
 确认话题有数据：
 
@@ -102,13 +128,13 @@ ros2 launch fastlio2 mrdvs_lio_launch.py
 ros2 launch fastlio2 mrdvs_lio_launch.py enable_rviz:=true
 ```
 
-默认使用稳定基线配置 `mrdvs.yaml`。如果需要尝试稍微精细一点的配置，可以切换到 `mrdvs_refined.yaml`：
+`mrdvs_lio_launch.py` 默认使用稍微精细一点的配置 `mrdvs_refined.yaml`：
 
 ```bash
 ros2 launch fastlio2 mrdvs_lio_launch.py config_file:=mrdvs_refined.yaml enable_rviz:=true
 ```
 
-`mrdvs_refined.yaml` 相比默认配置保留更多点云细节，主要调整为 `lidar_filter_num=2`、`lidar_min_range=0.35`、`lidar_max_range=20.0`、`scan_resolution=0.10`、`map_resolution=0.20`、`imu_init_num=60`、`lidar_cov_inv=800.0`。如果现场出现 CPU 占用升高或轨迹抖动，可以先切回默认 `mrdvs.yaml` 对比。
+`mrdvs_refined.yaml` 相比稳定基线 `mrdvs.yaml` 保留更多点云细节，主要调整为 `lidar_filter_num=2`、`lidar_min_range=0.35`、`lidar_max_range=20.0`、`scan_resolution=0.10`、`map_resolution=0.20`、`imu_init_num=60`、`lidar_cov_inv=800.0`。如果现场出现 CPU 占用升高或轨迹抖动，可以先切回 `mrdvs.yaml` 对比。
 
 FAST-LIO2 的 RViz 配置以 `map` 为 Fixed Frame。当前推荐 TF 树为：
 
@@ -158,12 +184,107 @@ ros2 run lx_camera_ros read_imu_extrinsic 192.168.1.10
 
 注意：SDK 打开设备是独占的。如果 `lx_camera_node` 或其他 SDK 程序正在运行，读取工具可能打不开设备；先停止相机节点，必要时等待几秒让 SDK 心跳释放权限。该工具不会自动转换平移单位，也不会自动写入 FAST-LIO2 配置；需要先确认 SDK 外参方向和单位后再使用。
 
+### FAST-LIVO2 标定参数
+
+`lx_camera_ros` 还提供 `read_fastlivo_calib` 工具，用于一次性读取 FAST-LIVO2 初始接入时需要核对的 RGB 内参、ToF/RGB 外参和 ToF/IMU 外参：
+
+```bash
+colcon build --packages-select lx_camera_ros
+source install/setup.bash
+ros2 run lx_camera_ros read_fastlivo_calib 192.168.100.82
+```
+
+当前设备 `camera_S10Ultra_192.168.100.82` 通过 SDK 读到的 RGB 图像内参如下。该值来自 `LX_PTR_2D_INTRINSIC_PARAMETERS`，对应 SDK 当前输出的处理后 RGB 图像；如果后续改成原始未去畸变图像，需要重新核对畸变模型和畸变系数。
+
+```yaml
+cam_model: Pinhole
+cam_width: 1280
+cam_height: 1080
+scale: 1.0
+cam_fx: 410.657836914
+cam_fy: 410.911346436
+cam_cx: 675.708251953
+cam_cy: 505.795715332
+cam_d0: 0.0
+cam_d1: 0.0
+cam_d2: 0.0
+cam_d3: 0.0
+```
+
+FAST-LIVO2 的输入话题可先按 MRDVS 当前 ROS2 驱动话题对应：
+
+```yaml
+common:
+  img_topic: "/lx_camera_node/LxCamera_Rgb"
+  lid_topic: "/lx_camera_node/LxCamera_Cloud"
+  imu_topic: "/lx_camera_node/LxCamera_Imu"
+  img_en: 1
+  lidar_en: 1
+```
+
+LiDAR/ToF 到 IMU 外参，FAST-LIVO2 初始接入时可先沿用 FAST-LIO2 配置中的厂家结构设计外参：
+
+```yaml
+extrin_calib:
+  extrinsic_R: [1.0, 0.0, 0.0,
+                0.0, 1.0, 0.0,
+                0.0, 0.0, 1.0]
+  extrinsic_T: [0.014569, -0.002738, 0.022567]
+```
+
+该外参按 FAST-LIVO2/FAST-LIO2 的 LiDAR 到 IMU 方向填写：
+
+```text
+p_imu = extrinsic_R * p_lidar + extrinsic_T
+```
+
+LiDAR/ToF 到 RGB 相机外参需要按点云是否已经做 RGBD 对齐来选择。
+
+推荐用于 FAST-LIVO2 的情况是启动 `lx_lidar_ros.launch.py`，使用 `is_xyz=2` 的 LiDAR 风格点云。该点云包含 `x/y/z/intensity/timestamp/row_pos/col_pos`，更适合 LIO/LIVO 算法；此时应优先使用物理 ToF 到 RGB 的外参：
+
+```yaml
+extrin_calib:
+  Rcl: [0.9999749976, 0.0070269292, 0.0007914628,
+        -0.0070300522, 0.9999672299, 0.0040146685,
+        -0.0007632260, -0.0040201322, 0.9999916280]
+  Pcl: [-0.0002534064, 0.0164201476, -0.0020634814]
+```
+
+含义为：
+
+```text
+p_camera = Rcl * p_lidar + Pcl
+```
+
+如果使用普通 `lx_camera_ros.launch.py` 且开启 `LX_INT_RGBD_ALIGN_MODE=1`，SDK 会把深度/点云对齐到 RGB 图像坐标系。该模式适合彩色点云显示，但默认 `is_xyz=1` 点云没有 FAST-LIVO2 运动补偿需要的点级 `timestamp` 字段；若仅用于验证 RGBD 对齐效果，`Rcl/Pcl` 可先按单位外参测试：
+
+```yaml
+Rcl: [1.0, 0.0, 0.0,
+      0.0, 1.0, 0.0,
+      0.0, 0.0, 1.0]
+Pcl: [0.0, 0.0, 0.0]
+```
+
+时间偏移初始可先置 0，后续根据图像、点云和 IMU 的实际时间戳同步情况再调：
+
+```yaml
+time_offset:
+  imu_time_offset: 0.0
+  img_time_offset: 0.0
+  lidar_time_offset: 0.0
+  exposure_time_init: 0.0
+```
+
+注意：官方 FAST-LIVO2 是 ROS1/catkin 工程，默认示例面向 Livox Avia。MRDVS 当前是 ROS2 驱动，点云是标准 `sensor_msgs/msg/PointCloud2`，因此还需要处理 ROS2 到 ROS1 的桥接或将 FAST-LIVO2 移植到 ROS2，并适配点云字段读取 `x/y/z/intensity/timestamp`。
+
 ## Codex 工作规则
 
 当前工作空间的 Codex 用户规则写在 `AGENTS.md`。后续 Codex 在本目录内工作时，应先读取并遵循该文件。
 
 ## 更新记录
 
+- 2026-07-07：新增 `fastlio2/launch/mrdvs_full_launch.py`，一键先启动固定 IP `192.168.100.82` 的 MRDVS LiDAR 驱动，等待默认 5 秒后启动 FAST-LIO2；`mrdvs_lio_launch.py` 默认切换为 `mrdvs_refined.yaml`，`lx_lidar_ros.launch.py` 默认固定 IP，并在固定 IP 模式下跳过 SDK 设备枚举。
+- 2026-07-07：新增 `read_fastlivo_calib` 工具说明，并记录当前设备用于 FAST-LIVO2 初始接入的 RGB 内参、ToF/RGB 外参、LiDAR/IMU 初始外参，以及 RGBD 对齐开启和未开启时 `Rcl/Pcl` 的使用区别。
 - 2026-07-07：新增 FAST-LIO2 稍精细配置 `mrdvs_refined.yaml`，在保留默认稳定配置 `mrdvs.yaml` 的同时，降低点云抽稀和体素分辨率以保留更多地图细节；`mrdvs_lio_launch.py` 新增 `config_file` 参数，可通过 `config_file:=mrdvs_refined.yaml` 快速切换配置。
 - 2026-07-07：统一 MRDVS + FAST-LIO2 的 TF 连接为 `map -> mrdvs_imu -> mrdvs_tof`；FAST-LIO2 launch 新增 `mrdvs_imu -> mrdvs_tof` 静态 TF，LiDAR 驱动模式关闭原有 `base_link -> mrdvs_tof` TF，避免同一 child frame 有两个父节点，同时保留 `mrdvs_tof -> mrdvs_rgb` 内部 TF；将 FAST-LIO2 RViz Fixed Frame 改为 `map`，并修复 `/fastlio2/lio_path` 顶层 `header.stamp` 一直为 0 导致 RViz Message Filter 丢弃路径的问题。
 - 2026-07-06：新增 `read_imu_extrinsic` 工具，通过 SDK 读取 `LX_PTR_IMU_EXTRIC_PARAM`，打印 IMU 外参原始 12 个 float、旋转矩阵、平移向量和 YAML 候选片段，并检测全 0 无效外参，用于后续与标定结果对比。

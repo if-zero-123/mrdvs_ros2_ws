@@ -1,6 +1,7 @@
 ﻿from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
@@ -9,10 +10,12 @@ import os
 def generate_launch_description():
   # 是否开启rviz显示
   enable_rviz =  LaunchConfiguration('enable_rviz')
+  camera_ip = LaunchConfiguration('ip')
   
   return LaunchDescription([
     # 声明参数，可以通过命令行传递参数值
     DeclareLaunchArgument('enable_rviz', default_value='false', description='Whether to launch rviz2'),
+    DeclareLaunchArgument('ip', default_value='192.168.100.82', description='Camera IP used by lx_camera_node'),
 
     # 启动节点lx_camera_node
     Node(
@@ -24,7 +27,7 @@ def generate_launch_description():
         parameters=[
             # <!-- base config:gpu, jpeg decode,ip、log -->
             {"enable_gpu": 0},
-            {"ip": ""},
+            {"ip": ParameterValue(camera_ip, value_type=str)},
             {"log_level": 1},
             {"log_path": "./log/"},
 

@@ -26,7 +26,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 'config_file',
-                default_value='mrdvs.yaml',
+                default_value='mrdvs_refined.yaml',
                 description='FAST-LIO2 config file under the fastlio2 config directory',
             ),
             launch_ros.actions.Node(

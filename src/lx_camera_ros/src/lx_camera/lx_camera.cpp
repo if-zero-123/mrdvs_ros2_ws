@@ -765,23 +765,30 @@ void LxCamera::Run() {
 }
 
 bool LxCamera::SearchAndOpenDevice() {
-  // find device
-  int devnum = 0;
-  LxDeviceInfo *devlist = nullptr;
-  while (true) {
-    Check("FIND_DEVICE", DcGetDeviceList(&devlist, &devnum));
-	if(devnum) break;
-    RCLCPP_ERROR(this->get_logger(), "Found device faild. retry...");
-    std::this_thread::sleep_for(std::chrono::milliseconds(5 * 1000));
-  }
-
-  // open device
-  LxDeviceInfo info;
   if (ip_.empty()) {
     ip_ = "0";
   }
   auto mode =
       ip_.size() < 8 ? LX_OPEN_MODE::OPEN_BY_INDEX : LX_OPEN_MODE::OPEN_BY_IP;
+
+  if (mode == LX_OPEN_MODE::OPEN_BY_INDEX) {
+    int devnum = 0;
+    LxDeviceInfo *devlist = nullptr;
+    while (true) {
+      Check("FIND_DEVICE", DcGetDeviceList(&devlist, &devnum));
+      if (devnum) {
+        break;
+      }
+      RCLCPP_ERROR(this->get_logger(), "Found device faild. retry...");
+      std::this_thread::sleep_for(std::chrono::milliseconds(5 * 1000));
+    }
+  } else {
+    RCLCPP_INFO(this->get_logger(),
+                "Open device by fixed IP %s. Skip device enumeration.",
+                ip_.c_str());
+  }
+
+  LxDeviceInfo info;
   if (LX_SUCCESS != DcOpenDevice(mode, ip_.c_str(), &handle_, &info)) {
     RCLCPP_ERROR(this->get_logger(), "Open device failed!");
     return false;
