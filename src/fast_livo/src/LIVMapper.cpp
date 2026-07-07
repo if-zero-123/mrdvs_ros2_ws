@@ -906,9 +906,9 @@ void LIVMapper::imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr &msg_in)
 
 cv::Mat LIVMapper::getImageFromMsg(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg)
 {
-  cv::Mat img;
-  img = cv_bridge::toCvShare(img_msg, "bgr8")->image;
-  return img;
+  // Images are queued and processed after the ROS callback returns, so keep
+  // owned image memory instead of a view into the incoming message buffer.
+  return cv_bridge::toCvCopy(img_msg, "bgr8")->image;
 }
 
 // static int i = 0;

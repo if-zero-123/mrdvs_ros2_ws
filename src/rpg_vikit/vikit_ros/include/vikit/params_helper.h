@@ -106,15 +106,17 @@ T getRemoteParam(const rclcpp::Node::SharedPtr &nh, const std::string& remote_no
 {
     // Try local first just in case
     std::string full_name = remote_node_name + "." + param_name; // common convention
+    std::string service_node = remote_node_name;
+    if (!service_node.empty() && service_node[0] != '/') service_node = "/" + service_node;
     T v;
     if (nh->get_parameter(full_name, v)) return v;
     if (nh->get_parameter(param_name, v)) return v;
 
     // Use SyncParametersClient for high performance cross-node access
     try {
-        auto parameters_client = std::make_shared<rclcpp::SyncParametersClient>(nh, remote_node_name);
-        // Wait briefly for the service to be available
-        if (parameters_client->wait_for_service(std::chrono::milliseconds(100))) {
+        auto parameters_client = std::make_shared<rclcpp::SyncParametersClient>(nh, service_node);
+        // The parameter blackboard may be launched in the same launch file, so give it time to advertise services.
+        if (parameters_client->wait_for_service(std::chrono::seconds(2))) {
             auto values = parameters_client->get_parameters({param_name});
             if (!values.empty() && values[0].get_type() != rclcpp::ParameterType::PARAMETER_NOT_SET) {
                 return values[0].get_value<T>();
@@ -122,10 +124,10 @@ T getRemoteParam(const rclcpp::Node::SharedPtr &nh, const std::string& remote_no
         }
     } catch (...) {
         // Fallback to popen if client fails
-        return getParam<T>(remote_node_name, param_name, defaultValue);
+        return getParam<T>(service_node, param_name, defaultValue);
     }
 
-    return defaultValue;
+    return getParam<T>(service_node, param_name, defaultValue);
 }
 
 template<typename T>

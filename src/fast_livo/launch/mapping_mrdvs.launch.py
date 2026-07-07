@@ -4,7 +4,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, TimerAction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -47,12 +47,17 @@ def generate_launch_description():
             parameters=[camera_params_file],
             output="screen",
         ),
-        Node(
-            package="fast_livo",
-            executable="fastlivo_mapping",
-            name="laserMapping",
-            parameters=[mrdvs_params_file],
-            output="screen",
+        TimerAction(
+            period=1.0,
+            actions=[
+                Node(
+                    package="fast_livo",
+                    executable="fastlivo_mapping",
+                    name="laserMapping",
+                    parameters=[mrdvs_params_file],
+                    output="screen",
+                )
+            ],
         ),
         Node(
             condition=IfCondition(LaunchConfiguration("use_rviz")),
