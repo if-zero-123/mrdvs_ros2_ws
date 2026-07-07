@@ -76,7 +76,7 @@ colcon build --packages-select lx_camera_ros fastlio2
 source install/setup.bash
 ```
 
-推荐直接启动 MRDVS + FAST-LIO2 一体 launch。它会先用固定 IP `192.168.100.82` 启动 MRDVS 的 LiDAR 模式，驱动自身 RViz 保持关闭，等待默认 3 秒后再启动 FAST-LIO2，默认打开 FAST-LIO2 的 RViz，并默认使用精细配置 `mrdvs_refined.yaml`：
+推荐直接启动 MRDVS + FAST-LIO2 一体 launch。它会先用固定 IP `192.168.100.82` 启动 MRDVS 的 LiDAR 模式，驱动自身 RViz 保持关闭，等待默认 3 秒后再启动 FAST-LIO2，默认打开 FAST-LIO2 的 RViz，并默认使用稳定基线配置 `mrdvs.yaml`：
 
 ```bash
 ros2 launch fastlio2 mrdvs_full_launch.py
@@ -88,10 +88,10 @@ ros2 launch fastlio2 mrdvs_full_launch.py
 ros2 launch fastlio2 mrdvs_full_launch.py camera_ip:=192.168.100.82 fastlio_delay:=3.0 enable_rviz:=false
 ```
 
-如果现场 CPU 占用过高或想切回稳定基线参数：
+如果后续想临时尝试更细的地图细节，可以手动切到精细参数：
 
 ```bash
-ros2 launch fastlio2 mrdvs_full_launch.py config_file:=mrdvs.yaml
+ros2 launch fastlio2 mrdvs_full_launch.py config_file:=mrdvs_refined.yaml
 ```
 
 分步调试时，可以先启动 MRDVS 的 LiDAR 模式。这个 launch 默认固定连接 `192.168.100.82`，不会先枚举设备；它会发布带强度和时间戳字段的 `/lx_camera_node/LxCamera_Cloud`，并发布 `/lx_camera_node/LxCamera_Imu`：
@@ -128,13 +128,13 @@ ros2 launch fastlio2 mrdvs_lio_launch.py
 ros2 launch fastlio2 mrdvs_lio_launch.py enable_rviz:=true
 ```
 
-`mrdvs_lio_launch.py` 默认使用稍微精细一点的配置 `mrdvs_refined.yaml`：
+`mrdvs_lio_launch.py` 默认使用稳定基线配置 `mrdvs.yaml`。如果需要临时尝试稍微精细一点的配置，可以手动切换到 `mrdvs_refined.yaml`：
 
 ```bash
 ros2 launch fastlio2 mrdvs_lio_launch.py config_file:=mrdvs_refined.yaml enable_rviz:=true
 ```
 
-`mrdvs_refined.yaml` 相比稳定基线 `mrdvs.yaml` 保留更多点云细节，主要调整为 `lidar_filter_num=2`、`lidar_min_range=0.35`、`lidar_max_range=20.0`、`scan_resolution=0.10`、`map_resolution=0.20`、`imu_init_num=60`、`lidar_cov_inv=800.0`。如果现场出现 CPU 占用升高或轨迹抖动，可以先切回 `mrdvs.yaml` 对比。
+`mrdvs_refined.yaml` 相比稳定基线 `mrdvs.yaml` 保留更多点云细节，主要调整为 `lidar_filter_num=2`、`lidar_min_range=0.35`、`lidar_max_range=20.0`、`scan_resolution=0.10`、`map_resolution=0.20`、`imu_init_num=60`、`lidar_cov_inv=800.0`。该配置更吃 CPU；如果现场移动时卡顿或建图延迟，优先使用默认 `mrdvs.yaml`。
 
 FAST-LIO2 的 RViz 配置以 `map` 为 Fixed Frame。当前推荐 TF 树为：
 
@@ -283,6 +283,7 @@ time_offset:
 
 ## 更新记录
 
+- 2026-07-07：将 FAST-LIO2 默认配置从 `mrdvs_refined.yaml` 恢复为稳定基线 `mrdvs.yaml`，避免精细配置在移动时点云量过大导致卡顿；`mrdvs_refined.yaml` 保留为手动调试选项。
 - 2026-07-07：修复 `mrdvs_full_launch.py` 中驱动 `enable_rviz:=false` 参数影响 FAST-LIO2 RViz 的问题；现在驱动 RViz 仍关闭，FAST-LIO2 RViz 会按一键启动的 `enable_rviz` 参数正常打开。
 - 2026-07-07：新增 `fastlio2/launch/mrdvs_full_launch.py`，一键先启动固定 IP `192.168.100.82` 的 MRDVS LiDAR 驱动并关闭驱动 RViz，等待默认 3 秒后启动 FAST-LIO2 和 FAST-LIO2 RViz；`mrdvs_lio_launch.py` 默认切换为 `mrdvs_refined.yaml`，`lx_lidar_ros.launch.py` 默认固定 IP，并在固定 IP 模式下跳过 SDK 设备枚举。
 - 2026-07-07：新增 `read_fastlivo_calib` 工具说明，并记录当前设备用于 FAST-LIVO2 初始接入的 RGB 内参、ToF/RGB 外参、LiDAR/IMU 初始外参，以及 RGBD 对齐开启和未开启时 `Rcl/Pcl` 的使用区别。

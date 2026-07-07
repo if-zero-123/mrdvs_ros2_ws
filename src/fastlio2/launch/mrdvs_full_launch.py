@@ -42,7 +42,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 'config_file',
-                default_value='mrdvs_refined.yaml',
+                default_value='mrdvs.yaml',
                 description='FAST-LIO2 config file under the fastlio2 config directory',
             ),
             GroupAction(
