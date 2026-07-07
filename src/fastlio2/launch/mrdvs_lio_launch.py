@@ -32,6 +32,22 @@ def generate_launch_description():
                 parameters=[{'config_path': config_path}],
             ),
             launch_ros.actions.Node(
+                package='tf2_ros',
+                executable='static_transform_publisher',
+                name='mrdvs_imu_to_tof_tf',
+                output='screen',
+                arguments=[
+                    '--x', '0.014569',
+                    '--y', '-0.002738',
+                    '--z', '0.022567',
+                    '--roll', '0.0',
+                    '--pitch', '0.0',
+                    '--yaw', '0.0',
+                    '--frame-id', 'mrdvs_imu',
+                    '--child-frame-id', 'mrdvs_tof',
+                ],
+            ),
+            launch_ros.actions.Node(
                 package='rviz2',
                 namespace='fastlio2',
                 executable='rviz2',

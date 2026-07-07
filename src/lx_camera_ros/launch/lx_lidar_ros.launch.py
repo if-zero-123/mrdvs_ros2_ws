@@ -66,7 +66,10 @@ def generate_launch_description():
             {"z": 0.0},
             {"roll": 0.0},
             {"pitch": 0.0},
-            {"yaw": 0.0}
+            {"yaw": 0.0},
+            # FAST-LIO launch 会发布 mrdvs_imu -> mrdvs_tof，LiDAR 模式下
+            # 驱动不再额外发布 base_link -> mrdvs_tof，避免同一 child 有两个父节点。
+            {"publish_base_tof_tf": False},
             ]
     ),
 

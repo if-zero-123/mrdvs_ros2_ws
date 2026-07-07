@@ -217,18 +217,21 @@ LxCamera::LxCamera(DcLib *dynamic_lib) : Node("lx_camera_node") {
   this->declare_parameter<float>("yaw", 0.0);
   this->declare_parameter<float>("roll", 0.0);
   this->declare_parameter<float>("pitch", 0.0);
+  this->declare_parameter<bool>("publish_base_tof_tf", true);
   this->get_parameter<float>("x", install_x_);
   this->get_parameter<float>("y", install_y_);
   this->get_parameter<float>("z", install_z_);
   this->get_parameter<float>("yaw", install_yaw_);
   this->get_parameter<float>("pitch", install_pitch_);
   this->get_parameter<float>("roll", install_roll_);
+  this->get_parameter<bool>("publish_base_tof_tf", publish_base_tof_tf_);
   RCLCPP_INFO(this->get_logger(), "x: %f", install_x_);
   RCLCPP_INFO(this->get_logger(), "y: %f", install_y_);
   RCLCPP_INFO(this->get_logger(), "z: %f", install_z_);
   RCLCPP_INFO(this->get_logger(), "yaw: %f", install_yaw_);
   RCLCPP_INFO(this->get_logger(), "pitch: %f", install_pitch_);
   RCLCPP_INFO(this->get_logger(), "roll: %f", install_roll_);
+  RCLCPP_INFO(this->get_logger(), "publish base-tof tf: %s", publish_base_tof_tf_ ? "true" : "false");
 
   DcRegisterImuDataCallback(handle_, ImuDataCallback, this);
   if (!is_start_) {
@@ -629,11 +632,12 @@ void LxCamera::Run() {
     fr.temperature = temp;
     pub_temper_->publish(fr);
 
-    // pub TF
-    tf_ext_base_tof.header.stamp = now;
-    tf_ext_base_tof.header.frame_id = "base_link";
-    tf_ext_base_tof.child_frame_id = "mrdvs_tof";
-    PubTf(tf_ext_base_tof);
+    if (publish_base_tof_tf_) {
+      tf_ext_base_tof.header.stamp = now;
+      tf_ext_base_tof.header.frame_id = "base_link";
+      tf_ext_base_tof.child_frame_id = "mrdvs_tof";
+      PubTf(tf_ext_base_tof);
+    }
     if ((is_xyz_ || is_depth_ || is_amp_) && is_rgb_) {
       tf_ext_tof_rgb.header.stamp = now;
       tf_ext_tof_rgb.header.frame_id = "mrdvs_tof";

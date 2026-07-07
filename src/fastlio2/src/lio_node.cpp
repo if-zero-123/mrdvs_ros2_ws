@@ -226,6 +226,8 @@ public:
         pose.pose.orientation.y = q.y();
         pose.pose.orientation.z = q.z();
         pose.pose.orientation.w = q.w();
+        m_state_data.path.header.frame_id = frame_id;
+        m_state_data.path.header.stamp = Utils::getTime(time);
         m_state_data.path.poses.push_back(pose);
         path_pub->publish(m_state_data.path);
     }

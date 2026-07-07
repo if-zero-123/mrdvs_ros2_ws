@@ -128,6 +128,7 @@ private:
   int inside_app_ = 0;
   int rgb_channel_ = 0;
   int lx_rgbd_align = 0;
+  bool publish_base_tof_tf_ = true;
   float install_x_ = 0.0, install_y_ = 0.0, install_z_ = 0.0,
         install_yaw_ = 0.0, install_roll_ = 0.0, install_pitch_ = 0.0;
 };
