@@ -1,0 +1,38 @@
+imu_topic: /lx_camera_node/LxCamera_Imu
+lidar_topic: /lx_camera_node/LxCamera_Cloud
+body_frame: mrdvs_imu
+world_frame: map
+print_time_cost: false
+
+# Refined MRDVS profile. This keeps the stable baseline conservative while
+# preserving more points and map detail than mrdvs.yaml.
+lidar_filter_num: 2
+lidar_min_range: 0.35
+lidar_max_range: 20.0
+scan_resolution: 0.10
+map_resolution: 0.20
+
+cube_len: 300
+det_range: 60
+move_thresh: 1.5
+
+na: 0.01
+ng: 0.01
+nba: 0.0001
+nbg: 0.0001
+
+imu_init_num: 60
+near_search_num: 5
+ieskf_max_iter: 5
+
+gravity_align: true
+esti_il: false
+
+# FAST-LIO2 uses lidar-to-imu extrinsics: p_imu = r_il * p_lidar + t_il.
+# Manufacturer structural extrinsic imu_lidar_ext is xyz-ypr, IMU-referenced,
+# with xyz in meters and ypr in degrees:
+# [0.014569, -0.002738, 0.022567, 0, 0, 0].
+r_il: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+t_il: [0.014569, -0.002738, 0.022567]
+
+lidar_cov_inv: 800.0

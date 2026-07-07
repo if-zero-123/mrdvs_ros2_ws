@@ -8,12 +8,13 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     enable_rviz = LaunchConfiguration('enable_rviz')
+    config_file = LaunchConfiguration('config_file')
 
     rviz_cfg = PathJoinSubstitution(
         [FindPackageShare('fastlio2'), 'rviz', 'fastlio2.rviz']
     )
     config_path = PathJoinSubstitution(
-        [FindPackageShare('fastlio2'), 'config', 'mrdvs.yaml']
+        [FindPackageShare('fastlio2'), 'config', config_file]
     )
 
     return launch.LaunchDescription(
@@ -22,6 +23,11 @@ def generate_launch_description():
                 'enable_rviz',
                 default_value='false',
                 description='Whether to launch rviz2 with the FAST-LIO2 config',
+            ),
+            DeclareLaunchArgument(
+                'config_file',
+                default_value='mrdvs.yaml',
+                description='FAST-LIO2 config file under the fastlio2 config directory',
             ),
             launch_ros.actions.Node(
                 package='fastlio2',
