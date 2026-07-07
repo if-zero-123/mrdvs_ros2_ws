@@ -118,6 +118,16 @@ target_include_directories(${TARGET_NAME} PRIVATE
 target_link_libraries(${TARGET_NAME} ${CMAKE_DL_LIBS})
 install(TARGETS ${TARGET_NAME} EXPORT export_${PROJECT_NAME} DESTINATION lib/${PROJECT_NAME})
 
+set(TARGET_NAME read_fastlivo_calib)
+add_executable(${TARGET_NAME}
+				${PROJECT_SOURCE_DIR}/src/tools/read_fastlivo_calib.cpp
+				${IMU_EXTRINSIC_FORMAT_SRC}
+				${PROJECT_SOURCE_DIR}/src/utils/dynamic_link.cpp)
+target_include_directories(${TARGET_NAME} PRIVATE
+				${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(${TARGET_NAME} ${CMAKE_DL_LIBS})
+install(TARGETS ${TARGET_NAME} EXPORT export_${PROJECT_NAME} DESTINATION lib/${PROJECT_NAME})
+
 if(BUILD_TESTING)
 ament_add_gtest(test_imu_extrinsic_format
 				test/test_imu_extrinsic_format.cpp
