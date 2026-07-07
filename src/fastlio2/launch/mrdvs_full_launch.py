@@ -1,5 +1,10 @@
 import launch
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.actions import (
+    DeclareLaunchArgument,
+    GroupAction,
+    IncludeLaunchDescription,
+    TimerAction,
+)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
@@ -40,12 +45,17 @@ def generate_launch_description():
                 default_value='mrdvs_refined.yaml',
                 description='FAST-LIO2 config file under the fastlio2 config directory',
             ),
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(lidar_launch),
-                launch_arguments={
-                    'enable_rviz': 'false',
-                    'ip': camera_ip,
-                }.items(),
+            GroupAction(
+                scoped=True,
+                actions=[
+                    IncludeLaunchDescription(
+                        PythonLaunchDescriptionSource(lidar_launch),
+                        launch_arguments={
+                            'enable_rviz': 'false',
+                            'ip': camera_ip,
+                        }.items(),
+                    ),
+                ],
             ),
             TimerAction(
                 period=fastlio_delay,
