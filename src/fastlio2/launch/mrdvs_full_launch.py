@@ -32,7 +32,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 'fastlio_delay',
-                default_value='5.0',
+                default_value='3.0',
                 description='Seconds to wait after starting the camera before FAST-LIO2',
             ),
             DeclareLaunchArgument(
