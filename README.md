@@ -102,13 +102,19 @@ ros2 launch fastlio2 mrdvs_lio_launch.py
 ros2 launch fastlio2 mrdvs_lio_launch.py enable_rviz:=true
 ```
 
-当前 `src/fastlio2/config/mrdvs.yaml` 中 `r_il` 和 `t_il` 先使用单位阵和零平移，只适合联调启动链路。FAST-LIO2 使用的外参方向是 LiDAR 到 IMU：
+当前 `src/fastlio2/config/mrdvs.yaml` 中 `r_il` 和 `t_il` 已填入厂家提供的结构设计外参 `imu_lidar_ext`。厂家参数说明为 `xyz-ypr`、以 IMU 为准、单位为米和度：
+
+```text
+imu_lidar_ext = [0.014569, -0.002738, 0.022567, 0, 0, 0]
+```
+
+由于 `ypr` 全为 0 度，`r_il` 使用单位阵；平移直接写入 `t_il`。FAST-LIO2 使用的外参方向是 LiDAR 到 IMU：
 
 ```text
 p_imu = r_il * p_lidar + t_il
 ```
 
-实际建图前需要用 SDK `LX_PTR_IMU_EXTRIC_PARAM` 或离线标定结果确认该方向后再填入，否则容易出现漂移、姿态错误或无法初始化。
+后续如果通过离线标定得到更准确结果，可以再用标定结果替换该结构设计外参；如果确认厂家定义的方向不是 LiDAR 在 IMU 坐标系下的位姿，则需要先做方向转换后再填入，否则容易出现漂移、姿态错误或无法初始化。
 
 ### 读取 SDK IMU 外参
 
@@ -143,6 +149,7 @@ ros2 run lx_camera_ros read_imu_extrinsic 192.168.1.10
 ## 更新记录
 
 - 2026-07-06：新增 `read_imu_extrinsic` 工具，通过 SDK 读取 `LX_PTR_IMU_EXTRIC_PARAM`，打印 IMU 外参原始 12 个 float、旋转矩阵、平移向量和 YAML 候选片段，并检测全 0 无效外参，用于后续与标定结果对比。
+- 2026-07-07：将厂家提供的 MRDVS 结构设计外参 `imu_lidar_ext = [0.014569, -0.002738, 0.022567, 0, 0, 0]` 写入 `fastlio2/config/mrdvs.yaml`，作为 FAST-LIO2 的 LiDAR 到 IMU 初始外参。
 - 2026-07-06：接入 `liangheming/FASTLIO2_ROS2` 的 `fastlio2` 主里程计包，移除 Livox 消息依赖，适配 MRDVS 的 `PointCloud2` 点云和 IMU 话题，新增 `mrdvs.yaml` 与 `mrdvs_lio_launch.py`。
 - 2026-07-06：新增 `record_bag.sh`，支持传入 bag 名称并将所有 ROS2 话题录制到 `~/bag/<bag_name>`。
 - 2026-07-06：开启 `lx_camera_ros.launch.py` 的 `LX_BOOL_ENABLE_IMU`，并补充 IMU 加速度与角速度量程默认参数，使 `/lx_camera_node/LxCamera_Imu` 能在重启 launch 后输出数据。
