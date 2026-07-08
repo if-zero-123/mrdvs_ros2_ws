@@ -63,6 +63,59 @@ source install/setup.bash
 
 录制输出目录为 `~/bag/<bag_name>`。脚本会拒绝覆盖已经存在的同名 bag，录制时按 `Ctrl+C` 停止。
 
+### 录制 MRDVS + FAST-LIVO2 排查数据包
+
+如果要排查“轻微运动正常、稍微剧烈抖动后漂移”的问题，建议录一个包含原始传感器和 FAST-LIVO2 输出的定向 bag，不必录全量话题。
+
+先启动 MRDVS + FAST-LIVO2：
+
+```bash
+source install/setup.bash
+ros2 launch fast_livo mrdvs_full_launch.py camera_ip:=192.168.100.82 use_rviz:=True
+```
+
+另开一个终端开始录制：
+
+```bash
+source install/setup.bash
+mkdir -p ~/bag
+ros2 bag record -o ~/bag/mrdvs_livo_debug_$(date +%Y%m%d_%H%M%S) \
+  /lx_camera_node/LxCamera_Cloud \
+  /lx_camera_node/LxCamera_Imu \
+  /lx_camera_node/LxCamera_Rgb \
+  /tf /tf_static \
+  /cloud_registered \
+  /aft_mapped_to_init \
+  /path \
+  /LIVO2/imu_propagate
+```
+
+推荐动作流程：
+
+```text
+0-10s：设备完全静止，让 IMU 重力和 bias 初始化。
+10-25s：慢速平移，前后左右各移动一点，幅度 0.3-0.8m。
+25-40s：慢速旋转，分别做 yaw、pitch、roll，小角度即可。
+40-55s：轻微抖动，保持画面里有墙面、桌面、纹理物体。
+55-70s：做会触发漂移的剧烈抖动，不要遮挡 RGB/ToF，不要对着纯白墙、玻璃或近距离空白区域。
+70-80s：重新静止，观察位姿是否还能稳定。
+```
+
+录完后用离线工具分析点云点级微秒时间戳、cloud header、RGB 和 IMU 的时间关系：
+
+```bash
+source install/setup.bash
+tools/analyze_mrdvs_bag.py ~/bag/<bag_name>
+```
+
+如果 bag 很大，可以先抽样分析：
+
+```bash
+tools/analyze_mrdvs_bag.py ~/bag/<bag_name> --max-clouds 300 --point-stride 4
+```
+
+重点看输出中的 `first point - cloud header`、`min point - cloud header`、`point timestamp span`、`image - cloud_header` 和 `image - point_start`。如果点级微秒时间和 header 差了几十毫秒，说明当前点云去畸变的时间基准要改；如果图像和点云长期差几十到上百毫秒，则优先调 `time_offset.img_time_offset`。
+
 ### 运行 MRDVS + FAST-LIO2
 
 安装 FAST-LIO2 需要的系统依赖：
