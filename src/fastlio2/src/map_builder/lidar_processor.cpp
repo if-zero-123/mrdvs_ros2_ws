@@ -242,7 +242,7 @@ void LidarProcessor::updateLossFunc(State &state, SharedState &share_data)
         const PointType &norm_p = m_effect_norm_vec->points[i];
         Eigen::Vector3d laser_p_vec(laser_p.x, laser_p.y, laser_p.z);
         Eigen::Vector3d norm_vec(norm_p.x, norm_p.y, norm_p.z);
-        Eigen::Matrix<double, 1, 3> B = -norm_vec.transpose() * state.r_wi * Sophus::SO3d::hat(state.r_il * laser_p_vec + state.t_wi);
+        Eigen::Matrix<double, 1, 3> B = computeImuRotationJacobian(norm_vec, state, laser_p_vec);
         J.block<1, 3>(0, 0) = B;
         J.block<1, 3>(0, 3) = norm_vec.transpose();
         if (m_config.esti_il)
@@ -255,6 +255,14 @@ void LidarProcessor::updateLossFunc(State &state, SharedState &share_data)
         share_data.H += J.transpose() * m_config.lidar_cov_inv * J;
         share_data.b += J.transpose() * m_config.lidar_cov_inv * norm_p.intensity;
     }
+}
+
+Eigen::Matrix<double, 1, 3> LidarProcessor::computeImuRotationJacobian(
+    const V3D &norm_vec,
+    const State &state,
+    const V3D &laser_p_vec)
+{
+    return -norm_vec.transpose() * state.r_wi * Sophus::SO3d::hat(state.r_il * laser_p_vec + state.t_il);
 }
 
 CloudType::Ptr LidarProcessor::transformCloud(CloudType::Ptr inp, const M3D &r, const V3D &t)

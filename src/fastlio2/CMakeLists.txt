@@ -77,7 +77,26 @@ install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 
 
 if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
+
+  ament_add_gtest(test_lidar_processor_math
+    test/test_lidar_processor_math.cpp
+    test/test_rotation_utils.cpp
+    src/map_builder/commons.cpp
+    src/map_builder/ieskf.cpp
+    src/map_builder/ikd_Tree.cpp
+    src/map_builder/lidar_processor.cpp
+  )
+  target_include_directories(test_lidar_processor_math PRIVATE
+    src
+    ${PCL_INCLUDE_DIRS}
+  )
+  target_link_libraries(test_lidar_processor_math
+    Sophus::Sophus
+    ${PCL_LIBRARIES}
+  )
+
   # the following line skips the linter which checks for copyrights
   # comment the line when a copyright and license is added to all source files
   set(ament_cmake_copyright_FOUND TRUE)

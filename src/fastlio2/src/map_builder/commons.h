@@ -27,6 +27,8 @@ bool esti_plane(PointVec &points, const double &thresh, V4D &out);
 
 float sq_dist(const PointType &p1, const PointType &p2);
 
+M3D orthonormalizeRotationMatrix(const M3D &matrix);
+
 struct Config
 {
     int lidar_filter_num = 3;

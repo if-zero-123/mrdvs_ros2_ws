@@ -115,6 +115,12 @@ public:
         std::vector<double> r_il_vec = config["r_il"].as<std::vector<double>>();
         m_builder_config.t_il << t_il_vec[0], t_il_vec[1], t_il_vec[2];
         m_builder_config.r_il << r_il_vec[0], r_il_vec[1], r_il_vec[2], r_il_vec[3], r_il_vec[4], r_il_vec[5], r_il_vec[6], r_il_vec[7], r_il_vec[8];
+        const double r_il_orth_error = (m_builder_config.r_il.transpose() * m_builder_config.r_il - M3D::Identity()).cwiseAbs().maxCoeff();
+        m_builder_config.r_il = orthonormalizeRotationMatrix(m_builder_config.r_il);
+        if (r_il_orth_error > 1e-9)
+        {
+            RCLCPP_WARN(this->get_logger(), "r_il was not exactly orthonormal, max |R^T R - I| = %.3e. Normalized before use.", r_il_orth_error);
+        }
         m_builder_config.lidar_cov_inv = config["lidar_cov_inv"].as<double>();
     }
 

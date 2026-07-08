@@ -232,7 +232,7 @@ r_il: [0.999802, -0.007834, 0.018309,
 t_il: [-0.003824, -0.121843, -0.189014]
 ```
 
-`imu_time_offset` 对应 LiDAR_IMU_Init 输出的 `Time Lag IMU to LiDAR = 0.067510s`。当前 FAST-LIO2 已在 IMU 回调中按该值执行 `imu_stamp - imu_time_offset`，等价于把 IMU 时间戳向前校正到 LiDAR 时间系。`mrdvs_full_launch.py` 默认也使用同一套平移和旋转发布 `mrdvs_imu -> mrdvs_tof` 静态 TF，旋转展开为：
+`imu_time_offset` 对应 LiDAR_IMU_Init 输出的 `Time Lag IMU to LiDAR = 0.067510s`。当前 FAST-LIO2 已在 IMU 回调中按该值执行 `imu_stamp - imu_time_offset`，等价于把 IMU 时间戳向前校正到 LiDAR 时间系。FAST-LIO2 加载 YAML 时会先对 `r_il` 做 SVD 正交化，避免从标定日志复制 6 位小数矩阵时因 `R^T R` 不是严格单位阵而触发 Sophus abort。`mrdvs_full_launch.py` 默认也使用同一套平移和旋转发布 `mrdvs_imu -> mrdvs_tof` 静态 TF，旋转展开为：
 
 ```text
 roll=0.07602804942824502
@@ -438,6 +438,7 @@ src/fast_livo/config/mrdvs_lidar_imu_init.yaml
 
 ## 更新记录
 
+- 2026-07-08：修复 FAST-LIO2 使用 LiDAR_IMU_Init 标定配置启动后 `lio_node` abort 的问题；根因是日志截断后的 `r_il` 旋转矩阵不够正交，Sophus 构造 SO3 时会直接中止。现在加载配置时会正交化 `r_il`，并修正点到平面残差 IMU 姿态雅可比中误用 `t_wi` 的问题，新增对应 gtest。
 - 2026-07-08：新增 LiDAR_IMU_Init refinement 标定配置 `mrdvs_lidar_imu_init.yaml`，同步写入 FAST-LIO2 与 FAST-LIVO2；一体启动默认使用该标定外参和 `0.067510s` IMU 时间偏移，FAST-LIO2 已新增 `imu_time_offset` 读取和时间戳校正。
 - 2026-07-07：将 FAST-LIVO2 MRDVS 配置中的点云近距离盲区 `preprocess.blind` 从 `0.35m` 调整为 `0.15m`，用于保留更多近距离 ToF/LiDAR 点。
 - 2026-07-07：将 MRDVS IMU Allan 标定的 `avg-axis` 噪声写入 FAST-LIO2 和 FAST-LIVO2 配置；FAST-LIVO2 现在会读取 `b_acc_cov`、`b_gyr_cov`，不再使用写死的 bias covariance 默认值。

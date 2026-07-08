@@ -27,6 +27,11 @@ public:
 
     void updateLossFunc(State &state, SharedState &share_data);
 
+    static Eigen::Matrix<double, 1, 3> computeImuRotationJacobian(
+        const V3D &norm_vec,
+        const State &state,
+        const V3D &laser_p_vec);
+
     static CloudType::Ptr transformCloud(CloudType::Ptr inp, const M3D &r, const V3D &t);
     M3D r_wl() { return m_kf->x().r_wi * m_kf->x().r_il; }
     V3D t_wl() { return m_kf->x().t_wi + m_kf->x().r_wi * m_kf->x().t_il; }

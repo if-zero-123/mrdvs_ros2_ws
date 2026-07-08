@@ -32,3 +32,17 @@ float sq_dist(const PointType &p1, const PointType &p2)
 {
     return (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y) + (p1.z - p2.z) * (p1.z - p2.z);
 }
+
+M3D orthonormalizeRotationMatrix(const M3D &matrix)
+{
+    Eigen::JacobiSVD<M3D> svd(matrix, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    M3D u = svd.matrixU();
+    const M3D v = svd.matrixV();
+    M3D rotation = u * v.transpose();
+    if (rotation.determinant() < 0.0)
+    {
+        u.col(2) *= -1.0;
+        rotation = u * v.transpose();
+    }
+    return rotation;
+}
