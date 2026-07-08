@@ -31,6 +31,7 @@ struct NodeConfig
     std::string body_frame = "body";
     std::string world_frame = "lidar";
     bool print_time_cost = false;
+    double imu_time_offset = 0.0;
 };
 struct StateData
 {
@@ -89,6 +90,8 @@ public:
         m_node_config.body_frame = config["body_frame"].as<std::string>();
         m_node_config.world_frame = config["world_frame"].as<std::string>();
         m_node_config.print_time_cost = config["print_time_cost"].as<bool>();
+        m_node_config.imu_time_offset = config["imu_time_offset"] ? config["imu_time_offset"].as<double>() : 0.0;
+        RCLCPP_INFO(this->get_logger(), "IMU time offset: %.6f s", m_node_config.imu_time_offset);
 
         m_builder_config.lidar_filter_num = config["lidar_filter_num"].as<int>();
         m_builder_config.lidar_min_range = config["lidar_min_range"].as<double>();
@@ -118,7 +121,7 @@ public:
     void imuCB(const sensor_msgs::msg::Imu::SharedPtr msg)
     {
         std::lock_guard<std::mutex> lock(m_state_data.imu_mutex);
-        double timestamp = Utils::getSec(msg->header);
+        double timestamp = Utils::getSec(msg->header) - m_node_config.imu_time_offset;
         if (timestamp < m_state_data.last_imu_time)
         {
             RCLCPP_WARN(this->get_logger(), "IMU Message is out of order");

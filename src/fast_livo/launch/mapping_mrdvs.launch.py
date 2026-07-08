@@ -35,11 +35,47 @@ def generate_launch_description():
 
     mrdvs_params_file = LaunchConfiguration("mrdvs_params_file")
     camera_params_file = LaunchConfiguration("camera_params_file")
+    tof_tf_x = LaunchConfiguration("tof_tf_x")
+    tof_tf_y = LaunchConfiguration("tof_tf_y")
+    tof_tf_z = LaunchConfiguration("tof_tf_z")
+    tof_tf_roll = LaunchConfiguration("tof_tf_roll")
+    tof_tf_pitch = LaunchConfiguration("tof_tf_pitch")
+    tof_tf_yaw = LaunchConfiguration("tof_tf_yaw")
 
     return LaunchDescription([
         use_rviz_arg,
         mrdvs_config_arg,
         camera_config_arg,
+        DeclareLaunchArgument(
+            "tof_tf_x",
+            default_value="0.014569",
+            description="LiDAR-to-IMU static TF x used for aft_mapped -> mrdvs_tof",
+        ),
+        DeclareLaunchArgument(
+            "tof_tf_y",
+            default_value="-0.002738",
+            description="LiDAR-to-IMU static TF y used for aft_mapped -> mrdvs_tof",
+        ),
+        DeclareLaunchArgument(
+            "tof_tf_z",
+            default_value="0.022567",
+            description="LiDAR-to-IMU static TF z used for aft_mapped -> mrdvs_tof",
+        ),
+        DeclareLaunchArgument(
+            "tof_tf_roll",
+            default_value="0.0",
+            description="LiDAR-to-IMU static TF roll used for aft_mapped -> mrdvs_tof",
+        ),
+        DeclareLaunchArgument(
+            "tof_tf_pitch",
+            default_value="0.0",
+            description="LiDAR-to-IMU static TF pitch used for aft_mapped -> mrdvs_tof",
+        ),
+        DeclareLaunchArgument(
+            "tof_tf_yaw",
+            default_value="0.0",
+            description="LiDAR-to-IMU static TF yaw used for aft_mapped -> mrdvs_tof",
+        ),
         Node(
             package="demo_nodes_cpp",
             executable="parameter_blackboard",
@@ -69,12 +105,12 @@ def generate_launch_description():
             name="aft_mapped_to_mrdvs_tof_tf",
             output="screen",
             arguments=[
-                "--x", "0.014569",
-                "--y", "-0.002738",
-                "--z", "0.022567",
-                "--roll", "0.0",
-                "--pitch", "0.0",
-                "--yaw", "0.0",
+                "--x", tof_tf_x,
+                "--y", tof_tf_y,
+                "--z", tof_tf_z,
+                "--roll", tof_tf_roll,
+                "--pitch", tof_tf_pitch,
+                "--yaw", tof_tf_yaw,
                 "--frame-id", "aft_mapped",
                 "--child-frame-id", "mrdvs_tof",
             ],

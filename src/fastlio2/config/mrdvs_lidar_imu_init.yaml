@@ -1,0 +1,42 @@
+imu_topic: /lx_camera_node/LxCamera_Imu
+lidar_topic: /lx_camera_node/LxCamera_Cloud
+body_frame: mrdvs_imu
+world_frame: map
+print_time_cost: false
+
+# LiDAR_IMU_Init reports "Time Lag IMU to LiDAR". Its convention is to subtract
+# this value from IMU stamps, or equivalently add it to LiDAR stamps.
+imu_time_offset: 0.067510
+
+lidar_filter_num: 3
+lidar_min_range: 0.5
+lidar_max_range: 30.0
+scan_resolution: 0.15
+map_resolution: 0.3
+
+cube_len: 300
+det_range: 60
+move_thresh: 1.5
+
+# MRDVS IMU Allan calibration, avg-axis.
+# acc_n: m/s^2, gyr_n: rad/s, acc_w: m/s^2, gyr_w: rad/s.
+na: 2.0348936872780068e-02
+ng: 2.3162072810468197e-03
+nba: 4.5452036338894608e-04
+nbg: 2.3553527673141791e-05
+
+imu_init_num: 20
+near_search_num: 5
+ieskf_max_iter: 5
+
+gravity_align: true
+esti_il: false
+
+# Refined LiDAR_IMU_Init result, LiDAR-to-IMU direction:
+# p_imu = r_il * p_lidar + t_il.
+r_il: [0.999802, -0.007834, 0.018309,
+       0.009201, 0.997081, -0.075789,
+       -0.017662, 0.075943, 0.996956]
+t_il: [-0.003824, -0.121843, -0.189014]
+
+lidar_cov_inv: 1000.0

@@ -13,6 +13,18 @@ def generate_launch_description():
     camera_ip = LaunchConfiguration("camera_ip")
     fastlivo_delay = LaunchConfiguration("fastlivo_delay")
     use_rviz = LaunchConfiguration("use_rviz")
+    mrdvs_params_file = LaunchConfiguration("mrdvs_params_file")
+    camera_params_file = LaunchConfiguration("camera_params_file")
+    tof_tf_x = LaunchConfiguration("tof_tf_x")
+    tof_tf_y = LaunchConfiguration("tof_tf_y")
+    tof_tf_z = LaunchConfiguration("tof_tf_z")
+    tof_tf_roll = LaunchConfiguration("tof_tf_roll")
+    tof_tf_pitch = LaunchConfiguration("tof_tf_pitch")
+    tof_tf_yaw = LaunchConfiguration("tof_tf_yaw")
+
+    config_file_dir = os.path.join(get_package_share_directory("fast_livo"), "config")
+    mrdvs_config = os.path.join(config_file_dir, "mrdvs_lidar_imu_init.yaml")
+    camera_config = os.path.join(config_file_dir, "camera_mrdvs.yaml")
 
     lx_launch = os.path.join(
         get_package_share_directory("lx_camera_ros"),
@@ -29,6 +41,46 @@ def generate_launch_description():
         DeclareLaunchArgument("camera_ip", default_value="192.168.100.82", description="MRDVS camera IP"),
         DeclareLaunchArgument("fastlivo_delay", default_value="3.0", description="Delay before starting FAST-LIVO2"),
         DeclareLaunchArgument("use_rviz", default_value="False", description="Whether to launch FAST-LIVO2 RViz"),
+        DeclareLaunchArgument(
+            "mrdvs_params_file",
+            default_value=mrdvs_config,
+            description="FAST-LIVO2 parameter file for MRDVS",
+        ),
+        DeclareLaunchArgument(
+            "camera_params_file",
+            default_value=camera_config,
+            description="Camera parameter file loaded into parameter_blackboard",
+        ),
+        DeclareLaunchArgument(
+            "tof_tf_x",
+            default_value="-0.003824",
+            description="LiDAR_IMU_Init LiDAR-to-IMU static TF x",
+        ),
+        DeclareLaunchArgument(
+            "tof_tf_y",
+            default_value="-0.121843",
+            description="LiDAR_IMU_Init LiDAR-to-IMU static TF y",
+        ),
+        DeclareLaunchArgument(
+            "tof_tf_z",
+            default_value="-0.189014",
+            description="LiDAR_IMU_Init LiDAR-to-IMU static TF z",
+        ),
+        DeclareLaunchArgument(
+            "tof_tf_roll",
+            default_value="0.07602804942824502",
+            description="LiDAR_IMU_Init LiDAR-to-IMU static TF roll",
+        ),
+        DeclareLaunchArgument(
+            "tof_tf_pitch",
+            default_value="0.017662913524259295",
+            description="LiDAR_IMU_Init LiDAR-to-IMU static TF pitch",
+        ),
+        DeclareLaunchArgument(
+            "tof_tf_yaw",
+            default_value="0.009202562370381036",
+            description="LiDAR_IMU_Init LiDAR-to-IMU static TF yaw",
+        ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(lx_launch),
             launch_arguments={
@@ -43,6 +95,14 @@ def generate_launch_description():
                     PythonLaunchDescriptionSource(fastlivo_launch),
                     launch_arguments={
                         "use_rviz": use_rviz,
+                        "mrdvs_params_file": mrdvs_params_file,
+                        "camera_params_file": camera_params_file,
+                        "tof_tf_x": tof_tf_x,
+                        "tof_tf_y": tof_tf_y,
+                        "tof_tf_z": tof_tf_z,
+                        "tof_tf_roll": tof_tf_roll,
+                        "tof_tf_pitch": tof_tf_pitch,
+                        "tof_tf_yaw": tof_tf_yaw,
                     }.items(),
                 )
             ],

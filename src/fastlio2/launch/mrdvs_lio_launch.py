@@ -9,6 +9,12 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description():
     enable_rviz = LaunchConfiguration('enable_rviz')
     config_file = LaunchConfiguration('config_file')
+    static_tf_x = LaunchConfiguration('static_tf_x')
+    static_tf_y = LaunchConfiguration('static_tf_y')
+    static_tf_z = LaunchConfiguration('static_tf_z')
+    static_tf_roll = LaunchConfiguration('static_tf_roll')
+    static_tf_pitch = LaunchConfiguration('static_tf_pitch')
+    static_tf_yaw = LaunchConfiguration('static_tf_yaw')
 
     rviz_cfg = PathJoinSubstitution(
         [FindPackageShare('fastlio2'), 'rviz', 'fastlio2.rviz']
@@ -29,6 +35,36 @@ def generate_launch_description():
                 default_value='mrdvs.yaml',
                 description='FAST-LIO2 config file under the fastlio2 config directory',
             ),
+            DeclareLaunchArgument(
+                'static_tf_x',
+                default_value='0.014569',
+                description='LiDAR-to-IMU static TF x used for mrdvs_imu -> mrdvs_tof',
+            ),
+            DeclareLaunchArgument(
+                'static_tf_y',
+                default_value='-0.002738',
+                description='LiDAR-to-IMU static TF y used for mrdvs_imu -> mrdvs_tof',
+            ),
+            DeclareLaunchArgument(
+                'static_tf_z',
+                default_value='0.022567',
+                description='LiDAR-to-IMU static TF z used for mrdvs_imu -> mrdvs_tof',
+            ),
+            DeclareLaunchArgument(
+                'static_tf_roll',
+                default_value='0.0',
+                description='LiDAR-to-IMU static TF roll used for mrdvs_imu -> mrdvs_tof',
+            ),
+            DeclareLaunchArgument(
+                'static_tf_pitch',
+                default_value='0.0',
+                description='LiDAR-to-IMU static TF pitch used for mrdvs_imu -> mrdvs_tof',
+            ),
+            DeclareLaunchArgument(
+                'static_tf_yaw',
+                default_value='0.0',
+                description='LiDAR-to-IMU static TF yaw used for mrdvs_imu -> mrdvs_tof',
+            ),
             launch_ros.actions.Node(
                 package='fastlio2',
                 namespace='fastlio2',
@@ -43,12 +79,12 @@ def generate_launch_description():
                 name='mrdvs_imu_to_tof_tf',
                 output='screen',
                 arguments=[
-                    '--x', '0.014569',
-                    '--y', '-0.002738',
-                    '--z', '0.022567',
-                    '--roll', '0.0',
-                    '--pitch', '0.0',
-                    '--yaw', '0.0',
+                    '--x', static_tf_x,
+                    '--y', static_tf_y,
+                    '--z', static_tf_z,
+                    '--roll', static_tf_roll,
+                    '--pitch', static_tf_pitch,
+                    '--yaw', static_tf_yaw,
                     '--frame-id', 'mrdvs_imu',
                     '--child-frame-id', 'mrdvs_tof',
                 ],

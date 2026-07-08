@@ -78,7 +78,7 @@ colcon build --packages-select lx_camera_ros fastlio2
 source install/setup.bash
 ```
 
-推荐直接启动 MRDVS + FAST-LIO2 一体 launch。它会先用固定 IP `192.168.100.82` 启动 MRDVS 的 LiDAR 模式，驱动自身 RViz 保持关闭，等待默认 3 秒后再启动 FAST-LIO2，默认打开 FAST-LIO2 的 RViz，并默认使用稳定基线配置 `mrdvs.yaml`：
+推荐直接启动 MRDVS + FAST-LIO2 一体 launch。它会先用固定 IP `192.168.100.82` 启动 MRDVS 的 LiDAR 模式，驱动自身 RViz 保持关闭，等待默认 3 秒后再启动 FAST-LIO2，默认打开 FAST-LIO2 的 RViz，并默认使用 LiDAR_IMU_Init refinement 标定配置 `mrdvs_lidar_imu_init.yaml`：
 
 ```bash
 ros2 launch fastlio2 mrdvs_full_launch.py
@@ -90,7 +90,16 @@ ros2 launch fastlio2 mrdvs_full_launch.py
 ros2 launch fastlio2 mrdvs_full_launch.py camera_ip:=192.168.100.82 fastlio_delay:=3.0 enable_rviz:=false
 ```
 
-如果后续想临时尝试更细的地图细节，可以手动切到精细参数：
+如果需要回到厂家结构设计外参基线，建议分步启动并直接使用 `mrdvs_lio_launch.py` 的默认参数；如果用一体 launch 切回 `mrdvs.yaml`，需要同时把静态 TF 参数切回厂家结构外参，避免算法外参与 RViz/TF 外参不一致：
+
+```bash
+ros2 launch fastlio2 mrdvs_full_launch.py \
+  config_file:=mrdvs.yaml \
+  static_tf_x:=0.014569 static_tf_y:=-0.002738 static_tf_z:=0.022567 \
+  static_tf_roll:=0.0 static_tf_pitch:=0.0 static_tf_yaw:=0.0
+```
+
+如果后续想临时尝试更细的地图细节，可以手动切到精细参数，同时按实际外参选择对应静态 TF：
 
 ```bash
 ros2 launch fastlio2 mrdvs_full_launch.py config_file:=mrdvs_refined.yaml
@@ -159,6 +168,24 @@ p_imu = r_il * p_lidar + t_il
 ```
 
 后续如果通过离线标定得到更准确结果，可以再用标定结果替换该结构设计外参；如果确认厂家定义的方向不是 LiDAR 在 IMU 坐标系下的位姿，则需要先做方向转换后再填入，否则容易出现漂移、姿态错误或无法初始化。
+
+当前已新增 `src/fastlio2/config/mrdvs_lidar_imu_init.yaml`，写入 LiDAR_IMU_Init refinement 标定结果。该结果同样按 FAST-LIO2 的 LiDAR 到 IMU 方向使用：
+
+```yaml
+imu_time_offset: 0.067510
+r_il: [0.999802, -0.007834, 0.018309,
+       0.009201, 0.997081, -0.075789,
+       -0.017662, 0.075943, 0.996956]
+t_il: [-0.003824, -0.121843, -0.189014]
+```
+
+`imu_time_offset` 对应 LiDAR_IMU_Init 输出的 `Time Lag IMU to LiDAR = 0.067510s`。当前 FAST-LIO2 已在 IMU 回调中按该值执行 `imu_stamp - imu_time_offset`，等价于把 IMU 时间戳向前校正到 LiDAR 时间系。`mrdvs_full_launch.py` 默认也使用同一套平移和旋转发布 `mrdvs_imu -> mrdvs_tof` 静态 TF，旋转展开为：
+
+```text
+roll=0.07602804942824502
+pitch=0.017662913524259295
+yaw=0.009202562370381036
+```
 
 当前 FAST-LIO2 和 FAST-LIVO2 的 MRDVS 配置已写入本机 Allan 标定得到的 IMU 噪声参数，采用标定文件中的 `avg-axis`：
 
@@ -319,7 +346,7 @@ ros2 launch fast_livo mrdvs_full_launch.py camera_ip:=192.168.100.82 use_rviz:=T
 map -> camera_init -> aft_mapped -> mrdvs_tof -> mrdvs_rgb
 ```
 
-其中 `map -> camera_init` 是静态显示变换，用于把 MRDVS/相机光学坐标显示成 ROS 常用的 `X` 前、`Y` 左、`Z` 上；`camera_init -> aft_mapped` 由 FAST-LIVO2 根据里程计结果动态发布；`aft_mapped -> mrdvs_tof` 使用当前厂家结构设计外参；`mrdvs_tof -> mrdvs_rgb` 由 MRDVS 驱动按设备 ToF/RGB 外参发布。FAST-LIVO2 的 RViz 配置默认使用 `map` 作为 Fixed Frame。
+其中 `map -> camera_init` 是静态显示变换，用于把 MRDVS/相机光学坐标显示成 ROS 常用的 `X` 前、`Y` 左、`Z` 上；`camera_init -> aft_mapped` 由 FAST-LIVO2 根据里程计结果动态发布；`aft_mapped -> mrdvs_tof` 在一体 launch 中默认使用 LiDAR_IMU_Init refinement 标定外参；`mrdvs_tof -> mrdvs_rgb` 由 MRDVS 驱动按设备 ToF/RGB 外参发布。FAST-LIVO2 的 RViz 配置默认使用 `map` 作为 Fixed Frame。
 
 分步调试时，先启动 MRDVS LiDAR 模式：
 
@@ -342,6 +369,14 @@ src/fast_livo/config/camera_mrdvs.yaml
 
 当前配置使用前文记录的 RGB 内参、ToF/RGB 外参、LiDAR/IMU 初始外参和 MRDVS IMU Allan 标定噪声；时间偏移 `imu_time_offset`、`img_time_offset`、`lidar_time_offset` 初始均为 `0.0`，后续需要通过 rosbag 观察图像、点云和 IMU 的实际时间偏差再微调。
 
+当前已新增 FAST-LIVO2 专用 LiDAR_IMU_Init 标定配置：
+
+```text
+src/fast_livo/config/mrdvs_lidar_imu_init.yaml
+```
+
+该配置写入 refinement 的 LiDAR 到 IMU 外参，并把 `time_offset.imu_time_offset` 设置为 `0.067510`；`mrdvs_full_launch.py` 默认加载这个新配置，同时把 `aft_mapped -> mrdvs_tof` 静态 TF 设置为同一套标定值。分步启动 `mapping_mrdvs.launch.py` 仍默认使用 `mrdvs.yaml` 和厂家结构外参，如果要分步测试新标定配置，需要同时传入 `mrdvs_params_file` 和 `tof_tf_*` 参数。
+
 为了让 MRDVS 可以不依赖 Livox 驱动独立编译，FAST-LIVO2 的 Livox `CustomMsg` 输入被改成可选项，默认关闭。MRDVS 使用标准 `PointCloud2` 路径，不需要安装 `livox_ros_driver2`。
 
 ## Codex 工作规则
@@ -350,6 +385,7 @@ src/fast_livo/config/camera_mrdvs.yaml
 
 ## 更新记录
 
+- 2026-07-08：新增 LiDAR_IMU_Init refinement 标定配置 `mrdvs_lidar_imu_init.yaml`，同步写入 FAST-LIO2 与 FAST-LIVO2；一体启动默认使用该标定外参和 `0.067510s` IMU 时间偏移，FAST-LIO2 已新增 `imu_time_offset` 读取和时间戳校正。
 - 2026-07-07：将 FAST-LIVO2 MRDVS 配置中的点云近距离盲区 `preprocess.blind` 从 `0.35m` 调整为 `0.15m`，用于保留更多近距离 ToF/LiDAR 点。
 - 2026-07-07：将 MRDVS IMU Allan 标定的 `avg-axis` 噪声写入 FAST-LIO2 和 FAST-LIVO2 配置；FAST-LIVO2 现在会读取 `b_acc_cov`、`b_gyr_cov`，不再使用写死的 bias covariance 默认值。
 - 2026-07-07：调整 FAST-LIVO2 RViz 默认 Fixed Frame 为 `map`，并在 `mapping_mrdvs.launch.py` 中维护 `map -> camera_init -> aft_mapped -> mrdvs_tof -> mrdvs_rgb` TF 链，使 MRDVS 点云按 ROS 常用 Z-up 方向显示，同时保留 FAST-LIVO2 自身 `camera_init -> aft_mapped` 动态位姿输出。

@@ -15,6 +15,12 @@ def generate_launch_description():
     camera_ip = LaunchConfiguration('camera_ip')
     fastlio_delay = LaunchConfiguration('fastlio_delay')
     config_file = LaunchConfiguration('config_file')
+    static_tf_x = LaunchConfiguration('static_tf_x')
+    static_tf_y = LaunchConfiguration('static_tf_y')
+    static_tf_z = LaunchConfiguration('static_tf_z')
+    static_tf_roll = LaunchConfiguration('static_tf_roll')
+    static_tf_pitch = LaunchConfiguration('static_tf_pitch')
+    static_tf_yaw = LaunchConfiguration('static_tf_yaw')
 
     lidar_launch = PathJoinSubstitution(
         [FindPackageShare('lx_camera_ros'), 'launch', 'lx_lidar_ros.launch.py']
@@ -42,8 +48,38 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 'config_file',
-                default_value='mrdvs.yaml',
+                default_value='mrdvs_lidar_imu_init.yaml',
                 description='FAST-LIO2 config file under the fastlio2 config directory',
+            ),
+            DeclareLaunchArgument(
+                'static_tf_x',
+                default_value='-0.003824',
+                description='LiDAR_IMU_Init LiDAR-to-IMU static TF x',
+            ),
+            DeclareLaunchArgument(
+                'static_tf_y',
+                default_value='-0.121843',
+                description='LiDAR_IMU_Init LiDAR-to-IMU static TF y',
+            ),
+            DeclareLaunchArgument(
+                'static_tf_z',
+                default_value='-0.189014',
+                description='LiDAR_IMU_Init LiDAR-to-IMU static TF z',
+            ),
+            DeclareLaunchArgument(
+                'static_tf_roll',
+                default_value='0.07602804942824502',
+                description='LiDAR_IMU_Init LiDAR-to-IMU static TF roll',
+            ),
+            DeclareLaunchArgument(
+                'static_tf_pitch',
+                default_value='0.017662913524259295',
+                description='LiDAR_IMU_Init LiDAR-to-IMU static TF pitch',
+            ),
+            DeclareLaunchArgument(
+                'static_tf_yaw',
+                default_value='0.009202562370381036',
+                description='LiDAR_IMU_Init LiDAR-to-IMU static TF yaw',
             ),
             GroupAction(
                 scoped=True,
@@ -65,6 +101,12 @@ def generate_launch_description():
                         launch_arguments={
                             'enable_rviz': enable_rviz,
                             'config_file': config_file,
+                            'static_tf_x': static_tf_x,
+                            'static_tf_y': static_tf_y,
+                            'static_tf_z': static_tf_z,
+                            'static_tf_roll': static_tf_roll,
+                            'static_tf_pitch': static_tf_pitch,
+                            'static_tf_yaw': static_tf_yaw,
                         }.items(),
                     ),
                 ],
