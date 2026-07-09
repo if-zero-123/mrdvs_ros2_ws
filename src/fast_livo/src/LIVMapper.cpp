@@ -449,6 +449,13 @@ void LIVMapper::handleLIO()
   double t1 = omp_get_wtime();
 
   voxelmap_manager->StateEstimation(state_propagat);
+  if (!voxelmap_manager->lio_update_valid_)
+  {
+    RCLCPP_WARN_THROTTLE(
+      this->node->get_logger(), *this->node->get_clock(), 2000,
+      "skip LIO update and voxel map insertion: no effective lidar constraints");
+    return;
+  }
   _state = voxelmap_manager->state_;
   _pv_list = voxelmap_manager->pv_list_;
 

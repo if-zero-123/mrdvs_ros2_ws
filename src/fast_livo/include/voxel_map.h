@@ -212,6 +212,7 @@ public:
 
   int feats_down_size_;
   int effct_feat_num_;
+  bool lio_update_valid_ = false;
   std::vector<M3D> cross_mat_list_;
   std::vector<M3D> body_cov_list_;
   std::vector<pointWithVar> pv_list_;

@@ -11,6 +11,7 @@ which is included as part of this source code package.
 */
 
 #include "voxel_map.h"
+#include "lio_update_guard.h"
 using namespace Eigen;
 void calcBodyCov(Eigen::Vector3d &pb, const float range_inc, const float degree_inc, Eigen::Matrix3d &cov)
 {
@@ -353,6 +354,7 @@ VoxelOctoTree *VoxelOctoTree::Insert(const pointWithVar &pv)
 
 void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
 {
+  lio_update_valid_ = false;
   cross_mat_list_.clear();
   cross_mat_list_.reserve(feats_down_size_);
   body_cov_list_.clear();
@@ -417,8 +419,16 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
       total_residual += fabs(ptpl_list_[i].dis_to_plane_);
     }
     effct_feat_num_ = ptpl_list_.size();
+    const double average_residual =
+      fast_livo::hasUsableLioConstraints(effct_feat_num_) ? total_residual / effct_feat_num_ : 0.0;
     cout << "[ LIO ] Raw feature num: " << feats_undistort_->size() << ", downsampled feature num:" << feats_down_size_ 
-         << " effective feature num: " << effct_feat_num_ << " average residual: " << total_residual / effct_feat_num_ << endl;
+         << " effective feature num: " << effct_feat_num_ << " average residual: " << average_residual << endl;
+    if (!fast_livo::hasUsableLioConstraints(effct_feat_num_))
+    {
+      lio_update_valid_ = false;
+      return;
+    }
+    lio_update_valid_ = true;
 
     /*** Computation of Measuremnt Jacobian matrix H and measurents covarience
      * ***/

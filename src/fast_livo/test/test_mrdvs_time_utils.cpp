@@ -1,5 +1,6 @@
 #include "mrdvs_time_utils.h"
 #include "imu_time_filter.h"
+#include "lio_update_guard.h"
 
 #include <gtest/gtest.h>
 
@@ -42,4 +43,10 @@ TEST(ImuTimeFilter, ResetsOnLargeForwardJump)
   EXPECT_FALSE(fast_livo::shouldResetImuTimestampStream(10.19, 10.0, 0.2));
 
   EXPECT_TRUE(fast_livo::shouldResetImuTimestampStream(10.201, 10.0, 0.2));
+}
+
+TEST(LioUpdateGuard, RejectsFramesWithoutEffectiveConstraints)
+{
+  EXPECT_FALSE(fast_livo::hasUsableLioConstraints(0));
+  EXPECT_TRUE(fast_livo::hasUsableLioConstraints(1));
 }
