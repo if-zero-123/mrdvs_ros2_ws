@@ -4,9 +4,10 @@ body_frame: mrdvs_imu
 world_frame: map
 print_time_cost: false
 
-# LiDAR_IMU_Init reports "Time Lag IMU to LiDAR". Its convention is to subtract
-# this value from IMU stamps, or equivalently add it to LiDAR stamps.
-imu_time_offset: 0.067510
+# Use the manufacturer structural extrinsic as the active MRDVS baseline.
+# The previous LiDAR_IMU_Init refinement translation was physically implausible
+# for this device and is not used by default.
+imu_time_offset: 0.0
 
 lidar_filter_num: 3
 lidar_min_range: 0.5
@@ -32,11 +33,11 @@ ieskf_max_iter: 5
 gravity_align: true
 esti_il: false
 
-# Refined LiDAR_IMU_Init result, LiDAR-to-IMU direction:
+# Manufacturer structural extrinsic, LiDAR-to-IMU direction:
 # p_imu = r_il * p_lidar + t_il.
-r_il: [0.999802, -0.007834, 0.018309,
-       0.009201, 0.997081, -0.075789,
-       -0.017662, 0.075943, 0.996956]
-t_il: [-0.003824, -0.121843, -0.189014]
+r_il: [1.0, 0.0, 0.0,
+       0.0, 1.0, 0.0,
+       0.0, 0.0, 1.0]
+t_il: [0.014569, -0.002738, 0.022567]
 
 lidar_cov_inv: 1000.0

@@ -9,21 +9,21 @@
       ros_driver_bug_fix: false
 
     extrin_calib:
-      # Refined LiDAR_IMU_Init result, LiDAR-to-IMU direction:
+      # Manufacturer structural extrinsic, LiDAR-to-IMU direction:
       # p_imu = extrinsic_R * p_lidar + extrinsic_T.
-      extrinsic_T: [-0.003824, -0.121843, -0.189014]
-      extrinsic_R: [0.999802, -0.007834, 0.018309,
-                    0.009201, 0.997081, -0.075789,
-                    -0.017662, 0.075943, 0.996956]
+      # The previous LiDAR_IMU_Init refinement translation was physically
+      # implausible for this device and is not used by default.
+      extrinsic_T: [0.014569, -0.002738, 0.022567]
+      extrinsic_R: [1.0, 0.0, 0.0,
+                    0.0, 1.0, 0.0,
+                    0.0, 0.0, 1.0]
       Rcl: [0.9999749976, 0.0070269292, 0.0007914628,
             -0.0070300522, 0.9999672299, 0.0040146685,
             -0.0007632260, -0.0040201322, 0.9999916280]
       Pcl: [-0.0002534064, 0.0164201476, -0.0020634814]
 
     time_offset:
-      # LiDAR_IMU_Init reports "Time Lag IMU to LiDAR". Its convention is to
-      # subtract this value from IMU stamps, or equivalently add it to LiDAR stamps.
-      imu_time_offset: 0.067510
+      imu_time_offset: 0.0
       img_time_offset: 0.0
       lidar_time_offset: 0.0
       exposure_time_init: 0.0

@@ -131,7 +131,7 @@ colcon build --packages-select lx_camera_ros fastlio2
 source install/setup.bash
 ```
 
-推荐直接启动 MRDVS + FAST-LIO2 一体 launch。它会先用固定 IP `192.168.100.82` 启动 MRDVS 的 LiDAR 模式，驱动自身 RViz 保持关闭，等待默认 3 秒后再启动 FAST-LIO2，默认打开 FAST-LIO2 的 RViz，并默认使用 LiDAR_IMU_Init refinement 标定配置 `mrdvs_lidar_imu_init.yaml`：
+推荐直接启动 MRDVS + FAST-LIO2 一体 launch。它会先用固定 IP `192.168.100.82` 启动 MRDVS 的 LiDAR 模式，驱动自身 RViz 保持关闭，等待默认 3 秒后再启动 FAST-LIO2，默认打开 FAST-LIO2 的 RViz，并默认使用厂家结构设计外参配置 `mrdvs.yaml`：
 
 ```bash
 ros2 launch fastlio2 mrdvs_full_launch.py
@@ -143,16 +143,7 @@ ros2 launch fastlio2 mrdvs_full_launch.py
 ros2 launch fastlio2 mrdvs_full_launch.py camera_ip:=192.168.100.82 fastlio_delay:=3.0 enable_rviz:=false
 ```
 
-如果需要回到厂家结构设计外参基线，建议分步启动并直接使用 `mrdvs_lio_launch.py` 的默认参数；如果用一体 launch 切回 `mrdvs.yaml`，需要同时把静态 TF 参数切回厂家结构外参，避免算法外参与 RViz/TF 外参不一致：
-
-```bash
-ros2 launch fastlio2 mrdvs_full_launch.py \
-  config_file:=mrdvs.yaml \
-  static_tf_x:=0.014569 static_tf_y:=-0.002738 static_tf_z:=0.022567 \
-  static_tf_roll:=0.0 static_tf_pitch:=0.0 static_tf_yaw:=0.0
-```
-
-如果后续想临时尝试更细的地图细节，可以手动切到精细参数，同时按实际外参选择对应静态 TF：
+如果后续想临时尝试更细的地图细节，可以手动切到精细参数，同时保持厂家结构外参对应的静态 TF：
 
 ```bash
 ros2 launch fastlio2 mrdvs_full_launch.py config_file:=mrdvs_refined.yaml
@@ -222,23 +213,17 @@ p_imu = r_il * p_lidar + t_il
 
 后续如果通过离线标定得到更准确结果，可以再用标定结果替换该结构设计外参；如果确认厂家定义的方向不是 LiDAR 在 IMU 坐标系下的位姿，则需要先做方向转换后再填入，否则容易出现漂移、姿态错误或无法初始化。
 
-当前已新增 `src/fastlio2/config/mrdvs_lidar_imu_init.yaml`，写入 LiDAR_IMU_Init refinement 标定结果。该结果同样按 FAST-LIO2 的 LiDAR 到 IMU 方向使用：
+`src/fastlio2/config/mrdvs_lidar_imu_init.yaml` 也已回退为厂家结构设计外参，保留该文件只是为了兼容之前的启动参数和测试记录：
 
 ```yaml
-imu_time_offset: 0.067510
-r_il: [0.999802, -0.007834, 0.018309,
-       0.009201, 0.997081, -0.075789,
-       -0.017662, 0.075943, 0.996956]
-t_il: [-0.003824, -0.121843, -0.189014]
+imu_time_offset: 0.0
+r_il: [1.0, 0.0, 0.0,
+       0.0, 1.0, 0.0,
+       0.0, 0.0, 1.0]
+t_il: [0.014569, -0.002738, 0.022567]
 ```
 
-`imu_time_offset` 对应 LiDAR_IMU_Init 输出的 `Time Lag IMU to LiDAR = 0.067510s`。当前 FAST-LIO2 已在 IMU 回调中按该值执行 `imu_stamp - imu_time_offset`，等价于把 IMU 时间戳向前校正到 LiDAR 时间系。FAST-LIO2 加载 YAML 时会先对 `r_il` 做 SVD 正交化，避免从标定日志复制 6 位小数矩阵时因 `R^T R` 不是严格单位阵而触发 Sophus abort。`mrdvs_full_launch.py` 默认也使用同一套平移和旋转发布 `mrdvs_imu -> mrdvs_tof` 静态 TF，旋转展开为：
-
-```text
-roll=0.07602804942824502
-pitch=0.017662913524259295
-yaw=0.009202562370381036
-```
+此前 LiDAR_IMU_Init refinement 输出的平移达到约 `[-0.38cm, -12.18cm, -18.90cm]`，和当前设备物理结构不符，因此不再作为 FAST-LIO2/FAST-LIVO2 默认外参。FAST-LIO2 仍保留 `imu_time_offset` 字段和 `r_il` 正交化逻辑，方便后续拿到可信标定结果后再测试。
 
 当前 FAST-LIO2 和 FAST-LIVO2 的 MRDVS 配置已写入本机 Allan 标定得到的 IMU 噪声参数，采用标定文件中的 `avg-axis`：
 
@@ -428,7 +413,7 @@ src/fast_livo/config/camera_mrdvs.yaml
 src/fast_livo/config/mrdvs_lidar_imu_init.yaml
 ```
 
-该配置写入 refinement 的 LiDAR 到 IMU 外参，并把 `time_offset.imu_time_offset` 设置为 `0.067510`；`mrdvs_full_launch.py` 默认加载这个新配置，同时把 `aft_mapped -> mrdvs_tof` 静态 TF 设置为同一套标定值。分步启动 `mapping_mrdvs.launch.py` 仍默认使用 `mrdvs.yaml` 和厂家结构外参，如果要分步测试新标定配置，需要同时传入 `mrdvs_params_file` 和 `tof_tf_*` 参数。
+该配置已回退为厂家结构设计外参，并把 `time_offset.imu_time_offset` 设置为 `0.0`；`mrdvs_full_launch.py` 默认加载 `mrdvs.yaml`，同时把 `aft_mapped -> mrdvs_tof` 静态 TF 设置为同一套厂家结构外参。
 
 为了让 MRDVS 可以不依赖 Livox 驱动独立编译，FAST-LIVO2 的 Livox `CustomMsg` 输入被改成可选项，默认关闭。MRDVS 使用标准 `PointCloud2` 路径，不需要安装 `livox_ros_driver2`。
 
@@ -438,8 +423,9 @@ src/fast_livo/config/mrdvs_lidar_imu_init.yaml
 
 ## 更新记录
 
+- 2026-07-09：确认厂家 `imu_lidar_ext` 为 LiDAR 在 IMU 坐标系下的位置后，将 FAST-LIO2 和 FAST-LIVO2 默认启动重新切回厂家结构外参；此前 LiDAR_IMU_Init refinement 平移量与设备物理结构不符，相关配置不再作为默认。
 - 2026-07-08：修复 FAST-LIO2 使用 LiDAR_IMU_Init 标定配置启动后 `lio_node` abort 的问题；根因是日志截断后的 `r_il` 旋转矩阵不够正交，Sophus 构造 SO3 时会直接中止。现在加载配置时会正交化 `r_il`，并修正点到平面残差 IMU 姿态雅可比中误用 `t_wi` 的问题，新增对应 gtest。
-- 2026-07-08：新增 LiDAR_IMU_Init refinement 标定配置 `mrdvs_lidar_imu_init.yaml`，同步写入 FAST-LIO2 与 FAST-LIVO2；一体启动默认使用该标定外参和 `0.067510s` IMU 时间偏移，FAST-LIO2 已新增 `imu_time_offset` 读取和时间戳校正。
+- 2026-07-08：新增 LiDAR_IMU_Init refinement 标定配置 `mrdvs_lidar_imu_init.yaml`，同步写入 FAST-LIO2 与 FAST-LIVO2；当时用于测试 `0.067510s` IMU 时间偏移，后续因平移量与设备物理结构不符已回退为厂家结构外参。
 - 2026-07-07：将 FAST-LIVO2 MRDVS 配置中的点云近距离盲区 `preprocess.blind` 从 `0.35m` 调整为 `0.15m`，用于保留更多近距离 ToF/LiDAR 点。
 - 2026-07-07：将 MRDVS IMU Allan 标定的 `avg-axis` 噪声写入 FAST-LIO2 和 FAST-LIVO2 配置；FAST-LIVO2 现在会读取 `b_acc_cov`、`b_gyr_cov`，不再使用写死的 bias covariance 默认值。
 - 2026-07-07：调整 FAST-LIVO2 RViz 默认 Fixed Frame 为 `map`，并在 `mapping_mrdvs.launch.py` 中维护 `map -> camera_init -> aft_mapped -> mrdvs_tof -> mrdvs_rgb` TF 链，使 MRDVS 点云按 ROS 常用 Z-up 方向显示，同时保留 FAST-LIVO2 自身 `camera_init -> aft_mapped` 动态位姿输出。

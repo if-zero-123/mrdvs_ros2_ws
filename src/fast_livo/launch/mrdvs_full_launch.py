@@ -23,7 +23,7 @@ def generate_launch_description():
     tof_tf_yaw = LaunchConfiguration("tof_tf_yaw")
 
     config_file_dir = os.path.join(get_package_share_directory("fast_livo"), "config")
-    mrdvs_config = os.path.join(config_file_dir, "mrdvs_lidar_imu_init.yaml")
+    mrdvs_config = os.path.join(config_file_dir, "mrdvs.yaml")
     camera_config = os.path.join(config_file_dir, "camera_mrdvs.yaml")
 
     lx_launch = os.path.join(
@@ -53,33 +53,33 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "tof_tf_x",
-            default_value="-0.003824",
-            description="LiDAR_IMU_Init LiDAR-to-IMU static TF x",
+            default_value="0.014569",
+            description="Manufacturer LiDAR-to-IMU static TF x",
         ),
         DeclareLaunchArgument(
             "tof_tf_y",
-            default_value="-0.121843",
-            description="LiDAR_IMU_Init LiDAR-to-IMU static TF y",
+            default_value="-0.002738",
+            description="Manufacturer LiDAR-to-IMU static TF y",
         ),
         DeclareLaunchArgument(
             "tof_tf_z",
-            default_value="-0.189014",
-            description="LiDAR_IMU_Init LiDAR-to-IMU static TF z",
+            default_value="0.022567",
+            description="Manufacturer LiDAR-to-IMU static TF z",
         ),
         DeclareLaunchArgument(
             "tof_tf_roll",
-            default_value="0.07602804942824502",
-            description="LiDAR_IMU_Init LiDAR-to-IMU static TF roll",
+            default_value="0.0",
+            description="Manufacturer LiDAR-to-IMU static TF roll",
         ),
         DeclareLaunchArgument(
             "tof_tf_pitch",
-            default_value="0.017662913524259295",
-            description="LiDAR_IMU_Init LiDAR-to-IMU static TF pitch",
+            default_value="0.0",
+            description="Manufacturer LiDAR-to-IMU static TF pitch",
         ),
         DeclareLaunchArgument(
             "tof_tf_yaw",
-            default_value="0.009202562370381036",
-            description="LiDAR_IMU_Init LiDAR-to-IMU static TF yaw",
+            default_value="0.0",
+            description="Manufacturer LiDAR-to-IMU static TF yaw",
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(lx_launch),
