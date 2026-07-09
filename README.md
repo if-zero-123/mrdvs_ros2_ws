@@ -149,13 +149,25 @@ ros2 launch fastlio2 mrdvs_full_launch.py camera_ip:=192.168.100.82 fastlio_dela
 ros2 launch fastlio2 mrdvs_full_launch.py config_file:=mrdvs_refined.yaml
 ```
 
-分步调试时，可以先启动 MRDVS 的 LiDAR 模式。这个 launch 默认固定连接 `192.168.100.82`，不会先枚举设备；它会发布带强度和时间戳字段的 `/lx_camera_node/LxCamera_Cloud`，并发布 `/lx_camera_node/LxCamera_Imu`：
+分步调试时，可以先单独启动 MRDVS 驱动。原始驱动里有两种常用点云启动方式：
+
+彩色点云 / RGBD 对齐显示模式：
 
 ```bash
-ros2 launch lx_camera_ros lx_lidar_ros.launch.py enable_rviz:=false
+ros2 launch lx_camera_ros lx_camera_ros.launch.py enable_rviz:=true
 ```
 
-如需临时切换设备 IP：
+该模式使用 `is_xyz=1` 和 `LX_INT_RGBD_ALIGN_MODE=1`，发布 `PointXYZRGB` 类型的 `/lx_camera_node/LxCamera_Cloud`，适合查看 RGB 着色点云效果；默认没有 FAST-LIO2/FAST-LIVO2 运动补偿需要的点级 `timestamp` 字段。
+
+SLAM 点云 / 强度和时间戳模式：
+
+```bash
+ros2 launch lx_camera_ros lx_lidar_ros.launch.py ip:=192.168.100.82 enable_rviz:=true
+```
+
+该模式默认固定连接 `192.168.100.82`，不会先枚举设备；使用 `is_xyz=2` 和 `LX_PTR_XYZIRT_DATA`，发布带 `intensity/timestamp/row_pos/col_pos` 字段的 `/lx_camera_node/LxCamera_Cloud`，并发布 `/lx_camera_node/LxCamera_Imu`，适合 FAST-LIO2 / FAST-LIVO2。
+
+如需只启动 LiDAR 模式但不打开驱动 RViz：
 
 ```bash
 ros2 launch lx_camera_ros lx_lidar_ros.launch.py ip:=192.168.100.82 enable_rviz:=false
@@ -423,6 +435,7 @@ src/fast_livo/config/mrdvs_lidar_imu_init.yaml
 
 ## 更新记录
 
+- 2026-07-09：补充 MRDVS 原始驱动两种点云启动方式：`lx_camera_ros.launch.py` 用于 RGBD 对齐彩色点云显示，`lx_lidar_ros.launch.py` 用于带强度和点级时间戳的 SLAM 点云。
 - 2026-07-09：FAST-LIVO2 的 LIO 更新增加零有效约束保护；当 `effective feature num` 为 0 时不再计算 NaN 平均残差、不执行 LIO EKF 更新，也不把当前帧写入 voxel map，避免跟踪丢失后的坏帧污染地图。
 - 2026-07-09：修复 FAST-LIVO2 遇到 IMU 前向大跳变后持续丢弃后续 IMU 导致卡住的问题；现在大跳变会清空旧 LiDAR/RGB/IMU 同步缓冲和 IMU 传播缓冲，并把当前 IMU 作为新的时间基准继续接收。
 - 2026-07-09：FAST-LIO2 和 FAST-LIVO2 的 IMU 回调入口新增非递增时间戳过滤；相同时间戳的 IMU 样本会被丢弃，倒退时间戳仍按异常处理，避免 `dt=0` 或回跳样本进入 IMU 积分。
