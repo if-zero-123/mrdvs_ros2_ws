@@ -894,12 +894,21 @@ void LIVMapper::imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr &msg_in)
     return;
   }
 
-  if (last_timestamp_imu > 0.0 && timestamp > last_timestamp_imu + 0.2)
+  constexpr double kMaxAcceptedImuGapSec = 0.2;
+  const bool reset_imu_stream =
+    fast_livo::shouldResetImuTimestampStream(timestamp, last_timestamp_imu, kMaxAcceptedImuGapSec);
+  if (reset_imu_stream)
   {
-    RCLCPP_WARN(this->node->get_logger(), "imu time stamp Jumps %0.4lf seconds \n", timestamp - last_timestamp_imu);
-    mtx_buffer.unlock();
-    sig_buffer.notify_all();
-    return;
+    RCLCPP_WARN(
+      this->node->get_logger(),
+      "imu time stamp jumps %.4lf seconds, reset sensor sync buffers",
+      timestamp - last_timestamp_imu);
+    imu_buffer.clear();
+    lid_raw_data_buffer.clear();
+    lid_header_time_buffer.clear();
+    img_buffer.clear();
+    img_time_buffer.clear();
+    lidar_pushed = false;
   }
 
   last_timestamp_imu = timestamp;
@@ -910,6 +919,12 @@ void LIVMapper::imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr &msg_in)
   if (imu_prop_enable)
   {
     mtx_buffer_imu_prop.lock();
+    if (reset_imu_stream)
+    {
+      prop_imu_buffer.clear();
+      latest_ekf_time = timestamp;
+      state_update_flg = true;
+    }
     if (imu_prop_enable && !p_imu->imu_need_init) { prop_imu_buffer.push_back(*msg); }
     newest_imu = *msg;
     new_imu = true;

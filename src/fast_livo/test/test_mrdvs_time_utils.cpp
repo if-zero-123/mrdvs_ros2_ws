@@ -35,3 +35,11 @@ TEST(ImuTimeFilter, DropsOnlyNonIncreasingTimestamps)
   EXPECT_TRUE(fast_livo::shouldDropImuTimestamp(10.0, 10.0));
   EXPECT_TRUE(fast_livo::shouldDropImuTimestamp(9.999, 10.0));
 }
+
+TEST(ImuTimeFilter, ResetsOnLargeForwardJump)
+{
+  EXPECT_FALSE(fast_livo::shouldResetImuTimestampStream(10.1, -1.0, 0.2));
+  EXPECT_FALSE(fast_livo::shouldResetImuTimestampStream(10.19, 10.0, 0.2));
+
+  EXPECT_TRUE(fast_livo::shouldResetImuTimestampStream(10.201, 10.0, 0.2));
+}
