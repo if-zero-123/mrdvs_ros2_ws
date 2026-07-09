@@ -82,6 +82,7 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_lidar_processor_math
     test/test_lidar_processor_math.cpp
+    test/test_imu_time_filter.cpp
     test/test_rotation_utils.cpp
     src/map_builder/commons.cpp
     src/map_builder/ieskf.cpp

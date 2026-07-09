@@ -1,4 +1,5 @@
 #include "mrdvs_time_utils.h"
+#include "imu_time_filter.h"
 
 #include <gtest/gtest.h>
 
@@ -24,4 +25,13 @@ TEST(MrdvsTimeUtils, RejectsNegativeRelativeTimes)
   const double timestamp_before_frame_us = 1000000000000.0 - 1.0;
 
   EXPECT_DOUBLE_EQ(fast_livo::mrdvsTimestampToRelativeMs(timestamp_before_frame_us, cloud_start_sec), 0.0);
+}
+
+TEST(ImuTimeFilter, DropsOnlyNonIncreasingTimestamps)
+{
+  EXPECT_FALSE(fast_livo::shouldDropImuTimestamp(10.0, -1.0));
+  EXPECT_FALSE(fast_livo::shouldDropImuTimestamp(10.005, 10.0));
+
+  EXPECT_TRUE(fast_livo::shouldDropImuTimestamp(10.0, 10.0));
+  EXPECT_TRUE(fast_livo::shouldDropImuTimestamp(9.999, 10.0));
 }

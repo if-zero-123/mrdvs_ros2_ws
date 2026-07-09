@@ -12,6 +12,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include "utils.h"
+#include "imu_time_filter.h"
 #include "map_builder/commons.h"
 #include "map_builder/map_builder.h"
 
@@ -128,10 +129,20 @@ public:
     {
         std::lock_guard<std::mutex> lock(m_state_data.imu_mutex);
         double timestamp = Utils::getSec(msg->header) - m_node_config.imu_time_offset;
-        if (timestamp < m_state_data.last_imu_time)
+        if (fastlio2::shouldDropImuTimestamp(timestamp, m_state_data.last_imu_time))
         {
-            RCLCPP_WARN(this->get_logger(), "IMU Message is out of order");
-            std::deque<IMUData>().swap(m_state_data.imu_buffer);
+            if (timestamp < m_state_data.last_imu_time)
+            {
+                RCLCPP_WARN(this->get_logger(), "IMU Message is out of order");
+                std::deque<IMUData>().swap(m_state_data.imu_buffer);
+            }
+            else
+            {
+                RCLCPP_WARN_THROTTLE(
+                    this->get_logger(), *this->get_clock(), 2000,
+                    "Drop duplicated IMU timestamp: %.9f", timestamp);
+            }
+            return;
         }
         m_state_data.imu_buffer.emplace_back(V3D(msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z),
                                              V3D(msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z),

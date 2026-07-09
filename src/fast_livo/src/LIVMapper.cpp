@@ -11,6 +11,7 @@ which is included as part of this source code package.
 */
 
 #include "LIVMapper.h"
+#include "imu_time_filter.h"
 #include <vikit/camera_loader.h>
 
 using namespace Sophus;
@@ -876,11 +877,20 @@ void LIVMapper::imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr &msg_in)
 
   mtx_buffer.lock();
 
-  if (last_timestamp_imu > 0.0 && timestamp < last_timestamp_imu)
+  if (fast_livo::shouldDropImuTimestamp(timestamp, last_timestamp_imu))
   {
     mtx_buffer.unlock();
     sig_buffer.notify_all();
-    RCLCPP_ERROR(this->node->get_logger(), "imu loop back, offset: %lf \n", last_timestamp_imu - timestamp);
+    if (timestamp < last_timestamp_imu)
+    {
+      RCLCPP_ERROR(this->node->get_logger(), "imu loop back, offset: %lf \n", last_timestamp_imu - timestamp);
+    }
+    else
+    {
+      RCLCPP_WARN_THROTTLE(
+        this->node->get_logger(), *this->node->get_clock(), 2000,
+        "drop duplicated imu timestamp: %.9f", timestamp);
+    }
     return;
   }
 
