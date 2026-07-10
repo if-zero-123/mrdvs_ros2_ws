@@ -906,27 +906,32 @@ void LIVMapper::imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr &msg_in)
 
   mtx_buffer.lock();
 
-  if (fast_livo::shouldDropImuTimestamp(timestamp, last_timestamp_imu))
+  constexpr double kMaxAcceptedImuGapSec = 0.2;
+  const fast_livo::ImuTimestampAction timestamp_action =
+    fast_livo::classifyImuTimestamp(timestamp, last_timestamp_imu, kMaxAcceptedImuGapSec);
+
+  if (timestamp_action == fast_livo::ImuTimestampAction::kDropWithoutReset)
   {
-    p_imu->reset_imu_initialization_window();
     mtx_buffer.unlock();
     sig_buffer.notify_all();
     if (timestamp < last_timestamp_imu)
     {
-      RCLCPP_ERROR(this->node->get_logger(), "imu loop back, offset: %lf \n", last_timestamp_imu - timestamp);
+      RCLCPP_WARN_THROTTLE(
+        this->node->get_logger(), *this->node->get_clock(), 2000,
+        "drop small imu timestamp rollback without resetting initialization, offset: %lf",
+        last_timestamp_imu - timestamp);
     }
     else
     {
       RCLCPP_WARN_THROTTLE(
         this->node->get_logger(), *this->node->get_clock(), 2000,
-        "drop duplicated imu timestamp: %.9f", timestamp);
+        "drop duplicated imu timestamp without resetting initialization: %.9f",
+        timestamp);
     }
     return;
   }
 
-  constexpr double kMaxAcceptedImuGapSec = 0.2;
-  const bool reset_imu_stream =
-    fast_livo::shouldResetImuTimestampStream(timestamp, last_timestamp_imu, kMaxAcceptedImuGapSec);
+  const bool reset_imu_stream = timestamp_action == fast_livo::ImuTimestampAction::kResetStream;
   if (reset_imu_stream)
   {
     p_imu->reset_imu_initialization_window();

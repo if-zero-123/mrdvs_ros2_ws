@@ -133,6 +133,32 @@ TEST(ImuTimeFilter, ResetsOnLargeForwardJump)
   EXPECT_TRUE(fast_livo::shouldResetImuTimestampStream(10.201, 10.0, 0.2));
 }
 
+TEST(ImuTimeFilter, DropsDuplicateAndRollbackWithoutResettingInitialization)
+{
+  EXPECT_EQ(
+    fast_livo::classifyImuTimestamp(10.0, 10.0, 0.2),
+    fast_livo::ImuTimestampAction::kDropWithoutReset);
+  EXPECT_EQ(
+    fast_livo::classifyImuTimestamp(9.99, 10.0, 0.2),
+    fast_livo::ImuTimestampAction::kDropWithoutReset);
+}
+
+TEST(ImuTimeFilter, ResetsInitializationOnlyForLargeTimeJump)
+{
+  EXPECT_EQ(
+    fast_livo::classifyImuTimestamp(10.0, -1.0, 0.2),
+    fast_livo::ImuTimestampAction::kAccept);
+  EXPECT_EQ(
+    fast_livo::classifyImuTimestamp(10.19, 10.0, 0.2),
+    fast_livo::ImuTimestampAction::kAccept);
+  EXPECT_EQ(
+    fast_livo::classifyImuTimestamp(10.201, 10.0, 0.2),
+    fast_livo::ImuTimestampAction::kResetStream);
+  EXPECT_EQ(
+    fast_livo::classifyImuTimestamp(9.799, 10.0, 0.2),
+    fast_livo::ImuTimestampAction::kResetStream);
+}
+
 TEST(LioUpdateGuard, RejectsFramesWithoutEffectiveConstraints)
 {
   EXPECT_FALSE(fast_livo::hasUsableLioConstraints(0));
