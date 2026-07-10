@@ -114,7 +114,7 @@ tools/analyze_mrdvs_bag.py ~/bag/<bag_name>
 tools/analyze_mrdvs_bag.py ~/bag/<bag_name> --max-clouds 300 --point-stride 4
 ```
 
-重点看输出中的 `first point - cloud header`、`min point - cloud header`、`point timestamp span`、`image - cloud_header` 和 `image - point_start`。如果点级微秒时间和 header 差了几十毫秒，说明当前点云去畸变的时间基准要改；如果图像和点云长期差几十到上百毫秒，则优先调 `time_offset.img_time_offset`。
+重点综合检查时间戳模式是否为 `absolute_us`、`min point - cloud header`、`point timestamp span`、负相对时间点，以及 `image - cloud_header` 和 `image - point_start`。不要只凭 `first point - cloud header` 相差几十毫秒就判定去畸变时间基准错误：`PointCloud2` 的存储首点未必是时间最早的点。当前 bag 的 `first point - cloud header` 中位数为 `+42.130ms`，但 `min point - cloud header` 为 `0ms`、没有负相对时间点且有效跨度为 `76.410ms` 到 `91.730ms`，与 strict absolute-us 契约一致。只有最早点与 header、absolute-us 数值关系或跨度本身异常时，才继续排查点时间基准；图像偏移也应结合稳定的多帧统计和现场快速运动效果评估，不要只看单帧数值直接修改 time offset。
 
 ### 运行 MRDVS + FAST-LIO2
 
@@ -377,10 +377,10 @@ x y z intensity timestamp row_pos col_pos
 
 其中 `timestamp` 按 MRDVS 驱动发布的绝对微秒时间戳处理，FAST-LIVO2 内部会转换为每帧点云的相对毫秒时间，用于点云运动补偿。
 
-构建 FAST-LIVO2 相关包：
+构建 FAST-LIVO2 及一体启动所需的 MRDVS 驱动：
 
 ```bash
-colcon build --packages-up-to fast_livo --symlink-install
+colcon build --packages-up-to fast_livo lx_camera_ros --symlink-install
 source install/setup.bash
 ```
 
@@ -537,7 +537,7 @@ TEST(SlamSensorSettings, RequiresReadbackToMatchRequestedValue)
 ```
 
 - [x] 运行 `colcon build --packages-select lx_camera_ros --cmake-args -DBUILD_TESTING=ON`，确认因 `slam_sensor_settings.h` 或目标函数不存在而编译失败。
-- [x] 实现纯函数和驱动读回校验；`DcGetIntValue`/`DcGetBoolValue` 失败或实际值不一致时抛出明确错误，禁止节点继续启流。
+- [x] 实现纯函数和驱动读回校验；`DcGetIntValue`/`DcGetBoolValue` 失败或实际值不一致时通过 `RCLCPP_ERROR` 记录明确错误，并返回 `false`/`LX_ERROR`，阻止节点调用 `DcStartStream`，不依赖 C++ 异常。
 - [x] 在 `lx_lidar_ros.launch.py` 声明 `imu_angular_range_level`，默认值为 `2`，并传入以下参数：
 
 ```python
@@ -558,11 +558,12 @@ TEST(SlamSensorSettings, RequiresReadbackToMatchRequestedValue)
 - 修改 `src/fast_livo/include/mrdvs_time_utils.h`
 - 修改 `src/fast_livo/include/preprocess.h`
 - 修改 `src/fast_livo/src/preprocess.cpp`
-- 修改 `src/fast_livo/include/LIVMapper.h`
 - 修改 `src/fast_livo/src/LIVMapper.cpp`
 - 修改 `src/fast_livo/config/mrdvs.yaml`
 - 修改 `src/fast_livo/config/mrdvs_lidar_imu_init.yaml`
 - 修改 `src/fast_livo/test/test_mrdvs_time_utils.cpp`
+- 新建 `src/fast_livo/test/test_mrdvs_preprocess.cpp`
+- 修改 `src/fast_livo/CMakeLists.txt`，注册两个阶段二测试目标
 
 **接口：**
 
@@ -586,36 +587,54 @@ MrdvsTimestampResult parseMrdvsTimestamp(
 void Preprocess::setBlind(double blind_m);
 ```
 
-- [x] 先扩展 `test_mrdvs_time_utils.cpp`，写入以下空间和时间失败测试：
+- [x] 先在 `test_mrdvs_preprocess.cpp` 写入空间边界和真实 `mrdvs_handler()` 测试，在 `test_mrdvs_time_utils.cpp` 写入 strict absolute-us 时间测试，并由 CMake 分别注册 `test_mrdvs_preprocess` 和 `test_mrdvs_time_utils`。代表性测试如下：
 
 ```cpp
-TEST(MrdvsPreprocessUtils, RejectsInvalidAndNearPoints)
+// test_mrdvs_preprocess.cpp：空间分类；同文件还覆盖非有限坐标和真实 handler 的过滤与排序。
+TEST(MrdvsPreprocessUtils, ClassifiesZeroNearBoundaryAndFarPoints)
 {
+  using fast_livo::MrdvsPointStatus;
   EXPECT_EQ(fast_livo::classifyMrdvsPoint(0.0, 0.0, 0.0, 0.19),
-            fast_livo::MrdvsPointStatus::kZeroOrNear);
+            MrdvsPointStatus::kZeroOrNear);
   EXPECT_EQ(fast_livo::classifyMrdvsPoint(0.18, 0.0, 0.0, 0.19),
-            fast_livo::MrdvsPointStatus::kZeroOrNear);
+            MrdvsPointStatus::kZeroOrNear);
+  EXPECT_EQ(fast_livo::classifyMrdvsPoint(0.19, 0.0, 0.0, 0.19),
+            MrdvsPointStatus::kValid);
   EXPECT_EQ(fast_livo::classifyMrdvsPoint(0.20, 0.0, 0.0, 0.19),
-            fast_livo::MrdvsPointStatus::kValid);
-  EXPECT_EQ(fast_livo::classifyMrdvsPoint(NAN, 0.0, 1.0, 0.19),
-            fast_livo::MrdvsPointStatus::kNonFinite);
-  EXPECT_EQ(fast_livo::classifyMrdvsPoint(INFINITY, 0.0, 1.0, 0.19),
-            fast_livo::MrdvsPointStatus::kNonFinite);
+            MrdvsPointStatus::kValid);
 }
 
-TEST(MrdvsTimeUtils, ReportsInvalidTimestampReasons)
+TEST(MrdvsTimeUtils, ParsesAbsoluteMicrosecondsAtFrameStart)
 {
-  constexpr double start = 1000000.0;
-  EXPECT_TRUE(fast_livo::parseMrdvsTimestamp(start * 1e6, start, 200.0).valid());
-  EXPECT_TRUE(fast_livo::parseMrdvsTimestamp(0.0, start, 200.0).valid());
-  EXPECT_EQ(fast_livo::parseMrdvsTimestamp(start * 1e6 - 1.0, start, 200.0).status,
-            fast_livo::MrdvsTimestampStatus::kNegative);
-  EXPECT_EQ(fast_livo::parseMrdvsTimestamp(250000.0, start, 200.0).status,
-            fast_livo::MrdvsTimestampStatus::kTooLarge);
-  EXPECT_EQ(fast_livo::parseMrdvsTimestamp(1.0e9, start, 200.0).status,
+  constexpr double cloud_start_sec = 1000000.0;
+  const auto result = fast_livo::parseMrdvsTimestamp(
+    cloud_start_sec * 1.0e6, cloud_start_sec, 200.0);
+  EXPECT_EQ(result.status, fast_livo::MrdvsTimestampStatus::kValid);
+  EXPECT_DOUBLE_EQ(result.relative_ms, 0.0);
+}
+
+TEST(MrdvsTimeUtils, AcceptsConfiguredMaximumAndRejectsOnlyValuesAboveIt)
+{
+  constexpr double cloud_start_sec = 1000000.0;
+  constexpr double cloud_start_us = cloud_start_sec * 1.0e6;
+  const auto at_limit = fast_livo::parseMrdvsTimestamp(
+    cloud_start_us + 200000.0, cloud_start_sec, 200.0);
+  const auto above_limit = fast_livo::parseMrdvsTimestamp(
+    cloud_start_us + 250000.0, cloud_start_sec, 200.0);
+  EXPECT_EQ(at_limit.status, fast_livo::MrdvsTimestampStatus::kValid);
+  EXPECT_DOUBLE_EQ(at_limit.relative_ms, 200.0);
+  EXPECT_EQ(above_limit.status, fast_livo::MrdvsTimestampStatus::kTooLarge);
+}
+
+TEST(MrdvsTimeUtils, RejectsRelativeOrWrongEpochValuesAsUnknownUnit)
+{
+  constexpr double cloud_start_sec = 1000000.0;
+  EXPECT_EQ(fast_livo::parseMrdvsTimestamp(0.0, cloud_start_sec, 200.0).status,
             fast_livo::MrdvsTimestampStatus::kUnknownUnit);
-  EXPECT_EQ(fast_livo::parseMrdvsTimestamp(NAN, start, 200.0).status,
-            fast_livo::MrdvsTimestampStatus::kNonFinite);
+  EXPECT_EQ(fast_livo::parseMrdvsTimestamp(250000.0, cloud_start_sec, 200.0).status,
+            fast_livo::MrdvsTimestampStatus::kUnknownUnit);
+  EXPECT_EQ(fast_livo::parseMrdvsTimestamp(1.0e9, cloud_start_sec, 200.0).status,
+            fast_livo::MrdvsTimestampStatus::kUnknownUnit);
 }
 ```
 
@@ -665,8 +684,10 @@ public:
 };
 }
 
-void ImuProcess::set_imu_init_thresholds(
-  double max_gyro_norm, double max_acc_norm_error);
+void ImuProcess::configure_imu_initialization(
+  bool stationary_init_en,
+  const fast_livo::ImuInitializationConfig &config);
+void ImuProcess::reset_imu_initialization_window();
 ```
 
 - [x] 先注册 `test_imu_initialization_utils` 并写入以下失败测试：
@@ -697,8 +718,8 @@ TEST(ImuInitializationAccumulator, MotionResetsTheWindow)
 ```
 
 - [x] 运行 `colcon build --packages-select fast_livo --cmake-args -DBUILD_TESTING=ON`，确认因累加器尚不存在而编译失败。
-- [x] 实现独立累加器并接入 `ImuProcess::Reset()`、`set_imu_init_frame_num()` 和 `IMU_init()`；只在累加器拥有有效样本时更新重力，完成时写入 `state_inout.bias_g = mean_gyr`。
-- [x] 新增并读取 `imu.imu_init_max_gyr_norm` 和 `imu.imu_init_acc_norm_tolerance`，MRDVS 两份配置分别写入 `600`、`0.10`、`0.75`；完成条件统一为 `sampleCount() >= required_samples`。
+- [x] 实现独立累加器并接入 `ImuProcess::Reset()`、`configure_imu_initialization()`、`reset_imu_initialization_window()` 和 `IMU_init()`；只在累加器拥有有效样本时更新重力，完成时写入 `state_inout.bias_g = mean_gyr`。
+- [x] 新增并读取 `imu.imu_init_max_gyr_norm` 和 `imu.imu_init_acc_norm_tolerance`，MRDVS 两份配置分别写入 `600`、`0.10`、`0.75`；样本数达到 `required_samples` 时 `ready()` 返回 true，之后的连续静止样本不再改变均值或计数，MRDVS 窗口冻结在 600 个样本。
 - [x] 运行新 gtest、全部 `fast_livo` 测试并构建 `fast_livo`。
 - [x] 提交阶段三，提交信息使用 `fix: require stationary IMU initialization`。
 
