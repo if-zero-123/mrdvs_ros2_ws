@@ -377,10 +377,11 @@ x y z intensity timestamp row_pos col_pos
 
 其中 `timestamp` 按 MRDVS 驱动发布的绝对微秒时间戳处理，FAST-LIVO2 内部会转换为每帧点云的相对毫秒时间，用于点云运动补偿。
 
-构建 FAST-LIVO2 及一体启动所需的 MRDVS 驱动：
+分别构建一体启动所需的 MRDVS 驱动和 FAST-LIVO2 依赖闭包；驱动先清理已有 CMake 安装模式缓存，FAST-LIVO2 保持 symlink-install：
 
 ```bash
-colcon build --packages-up-to fast_livo lx_camera_ros --symlink-install
+colcon build --packages-select lx_camera_ros --cmake-clean-cache --cmake-args -DBUILD_TESTING=ON
+colcon build --packages-up-to fast_livo --symlink-install --cmake-args -DBUILD_TESTING=ON
 source install/setup.bash
 ```
 
