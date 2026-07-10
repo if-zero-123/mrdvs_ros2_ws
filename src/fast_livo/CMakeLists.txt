@@ -195,6 +195,12 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+install(PROGRAMS
+  scripts/mrdvs_imu_diagnostics.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME mrdvs_imu_diagnostics
+)
+
 install(
   DIRECTORY config launch rviz_cfg
   DESTINATION share/${PROJECT_NAME}
@@ -202,6 +208,11 @@ install(
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_pytest REQUIRED)
+
+  ament_add_pytest_test(test_mrdvs_imu_diagnostics
+    test/test_mrdvs_imu_diagnostics.py
+  )
 
   ament_add_gtest(test_imu_initialization_utils
     test/test_imu_initialization_utils.cpp

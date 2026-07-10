@@ -20,6 +20,7 @@
 - `src/lx_camera_ros/`：ROS2 功能包源码。
 - `src/fastlio2/`：FAST-LIO2 ROS2 主里程计包，已适配 MRDVS 的 `PointCloud2` 和 `Imu` 话题。
 - `src/fast_livo/`：FAST-LIVO2 ROS2 Humble 移植版，当前分支已做 MRDVS 初始适配。
+- `src/fast_livo/scripts/mrdvs_imu_diagnostics.py`：实时采集 MRDVS IMU，统计频率、重复/回退时间戳、静止阈值和初始化进度，并输出 JSON、CSV 与 PNG 图表。
 - `src/rpg_vikit/`：FAST-LIVO2 使用的 ROS2 vikit 相机模型和视觉工具库。
 - `src/lx_camera_ros/src/lx_camera/`：相机节点相关实现。
 - `src/lx_camera_ros/src/lx_localization/`：定位与传感器仿真相关实现。
@@ -398,6 +399,45 @@ ros2 launch fast_livo mrdvs_full_launch.py \
 `imu_angular_range_level` 的合法范围是 `0..4`，默认 `2`，对应约 `±500 deg/s`。只有现场日志或原始数据确认快速手持动作超过该范围时才提高一级；最终量程和运行模式稳定后，需要重新录制 1 到 2 小时静止 IMU 数据并重做 Allan 标定。
 
 启动后必须让设备连续静止约 3 秒，等待控制台明确输出 IMU 初始化完成后再开始较快旋转或平移；窗口内发生运动、出现非有限样本或超过 `0.2s` 的时间大跳变会清空已有样本并重新累计 600 个连续静止样本。SDK 偶发的重复时间戳和不超过 `0.2s` 的小幅回退只会丢弃当前样本，不会再清空已经累计的静止进度。初始化期间同步时间水位会继续前移，完成后不会回放初始化前的旧点云。
+
+#### IMU 时间戳与初始化诊断
+
+`mrdvs_imu_diagnostics` 可直接订阅真实 IMU 话题，按 FAST-LIVO2 当前阈值统计时间戳和静止质量，并同时回放修复前、修复后的初始化进度规则。先在终端一关闭 RViz 启动驱动和 FAST-LIVO2：
+
+```bash
+source install/setup.bash
+ros2 launch fast_livo mrdvs_full_launch.py \
+  camera_ip:=192.168.100.82 \
+  imu_angular_range_level:=2 \
+  use_rviz:=False
+```
+
+设备保持静止，在终端二采样 30 秒：
+
+```bash
+source install/setup.bash
+OUTPUT_DIR=/tmp/mrdvs_imu_diagnostics_$(date +%Y%m%d-%H%M%S)
+ros2 run fast_livo mrdvs_imu_diagnostics \
+  --duration 30 \
+  --output-dir "$OUTPUT_DIR"
+```
+
+输出目录包含 `summary.json`、逐样本 `samples.csv` 和四联图 `imu_diagnostics.png`。本机在 2026-07-10 真实拉起 MRDVS 驱动与 FAST-LIVO2、关闭 RViz 并保持设备静止的 30 秒采样结果如下：
+
+| 指标 | 实测值 | 说明 |
+| --- | ---: | --- |
+| IMU 消息数 | `5855` | 采集时长 `30.0006s` |
+| 实际接收频率 | `195.129Hz` | 标称约 `200Hz` |
+| 重复时间戳 | `95`（`1.6228%`） | 重复样本不进入积分 |
+| 时间回退 / 超过 `0.2s` 跳变 | `0 / 0` | 本次没有触发同步流重置 |
+| 非有限 / gyro 超阈值 / acc 超阈值 | `0 / 0 / 0` | 本次静止条件合格 |
+| 修复前策略 | 30 秒未完成，最高 `309/600` | 重复时间戳会反复清零 |
+| 修复后策略 | `3.111s` 完成 `600/600` | 重复时间戳只丢弃、不清零 |
+| 正时间间隔中位数 / P99 | `4.9932ms / 9.9871ms` | 个别 10ms 间隔对应丢失的重复样本 |
+| gyro norm 均值 / P99 / 最大值 | `0.00675 / 0.01262 / 0.01541rad/s` | 低于 `0.10rad/s` 静止阈值 |
+| acc norm 均值 / 最小 / 最大值 | `9.6843 / 9.6391 / 9.7277m/s²` | 位于 `9.81±0.75m/s²` 静止范围 |
+
+该结果说明重复时间戳足以阻止旧策略完成 600 样本初始化，而当前策略在同一批真实数据上可以连续累计完成。它只验证静止初始化与时间戳修复，不等同于快速手持移动时的最终漂移验收。
 
 LiDAR launch 会以 SLAM 模式显式关闭 RGBD 对齐和 3D 反畸变，并在每次启流前读回陀螺量程及这两个开关；设置失败、读回失败或值不一致都会拒绝 `DcStartStream`。FAST-LIVO2 仍订阅 `/lx_camera_node/LxCamera_Rgb`，使用物理 ToF-to-RGB 外参为点云着色，不依赖 SDK 的 RGBD 对齐点云。
 
@@ -786,6 +826,7 @@ tools/analyze_mrdvs_bag.py /home/zero/bag/mrdvs_livo_debug_20260708_155719 --max
 
 ## 更新记录
 
+- 2026-07-10：新增 MRDVS IMU 实时诊断程序，可输出 JSON 汇总、逐样本 CSV 和 PNG 图表；真实静止采样 30 秒共收到 5855 条 IMU，发现 95 个重复时间戳，修复前策略未能完成初始化，修复后策略约 3.111 秒完成 600 个有效样本。
 - 2026-07-10：完成 FAST-LIVO2 手持稳定性三个代码阶段和 x86_64 软件集成验证：驱动关键模式设置/读回、MRDVS 点与 absolute-us 时间过滤、连续静止 IMU 初始化及 gyro bias 初值均已落地，构建与测试无失败，指定 bag 的抽样点时间跨度低于 `200ms`；真实 MRDVS 快速手持和 RK3588 ARM 原生验收仍未完成。
 - 2026-07-10：修复 MRDVS SDK 约每 `2.0~2.5s` 出现重复或小幅回退 IMU 时间戳时，FAST-LIVO2 错误清空静止初始化窗口而长期无法达到 600 个样本的问题；这些非递增样本现在只丢弃且保留初始化进度，前后方向超过 `0.2s` 的大跳变仍会重置同步流，并新增时间戳决策回归测试。
 - 2026-07-10：记录 FAST-LIVO2 快速手持扫描稳定性修复设计和测试驱动实施计划：默认采用约 `±500 deg/s` 陀螺量程，显式关闭会破坏逐点时间的 RGBD 对齐和 3D 反畸变，修复近场阈值和异常点时间处理，并采用约 3 秒静止 IMU 初始化；现有 RViz 观察配置保持不变。
