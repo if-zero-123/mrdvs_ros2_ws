@@ -429,12 +429,44 @@ src/fast_livo/config/mrdvs_lidar_imu_init.yaml
 
 为了让 MRDVS 可以不依赖 Livox 驱动独立编译，FAST-LIVO2 的 Livox `CustomMsg` 输入被改成可选项，默认关闭。MRDVS 使用标准 `PointCloud2` 路径，不需要安装 `livox_ros_driver2`。
 
+### FAST-LIVO2 手持扫描稳定性修复设计（2026-07-10，待实施）
+
+本轮修复面向“启动后可静止初始化、随后进行较快手持旋转和平移扫描”的使用方式。现有 RViz 的历史点云累计用于人工观察，保持不变；修复范围只包含传感器配置、MRDVS 点云预处理和 IMU 初始化链路。
+
+驱动配置设计：
+
+- MRDVS LiDAR 模式默认把 IMU 角速度量程设为 `level 2`，即约 `±500 deg/s`，并通过 launch 参数保留现场调整能力。
+- LiDAR/SLAM 模式显式关闭 `LX_INT_RGBD_ALIGN_MODE` 和 `LX_BOOL_ENABLE_3D_UNDISTORT`，启动后读回并记录角速度量程及这两个开关的实际值，避免依赖设备遗留状态。SDK 已说明这两项功能开启后 `XYZIRT` 的逐点时间戳不准确；关键参数设置失败或读回值不一致时，节点应明确报错并停止进入 SLAM 数据流。
+- RGB、IMU 和带 `timestamp/row_pos/col_pos` 的 `XYZIRT` 点云仍按现有话题发布；RGB 着色继续使用 FAST-LIVO2 中的物理 ToF-to-RGB 外参，不依赖 RGBD 对齐点云。
+
+点云预处理设计：
+
+- 修复 `preprocess.blind` 与 `blind_sqr` 不同步的问题，距离判断直接使用由当前 `blind` 计算出的平方阈值。
+- 依次过滤非有限坐标、零点、近场点和无效逐点时间；负时间、未知时间单位、无法换算的时间或超过可配置 `preprocess.max_point_time_offset_ms` 的帧内时间不再静默压成 `0ms`。MRDVS 默认最大帧内时间设为 `200ms`，覆盖当前实测不超过约 `92ms` 的扫描跨度。
+- 对丢弃的近场点和时间异常点做限频统计输出；若一帧过滤后少于 2 个有效点，则整帧跳过，不进入 IMU 去畸变和 voxel map 更新。
+- 保留有效点的真实时间排序和逐点去畸变流程；不使用简单的 RViz 历史累计或 `scan_line` 参数掩盖输入数据问题。
+
+IMU 初始化设计：
+
+- 启动 FAST-LIVO2 后，设备连续静止约 3 秒，累计约 600 个严格递增时间戳的 IMU 样本后再结束初始化。
+- 初始化窗口要求连续样本满足 `|gyro| <= 0.10rad/s` 且 `||acc||` 与 `9.81m/s^2` 的偏差不超过 `0.75m/s^2`；两个阈值均作为 MRDVS IMU 配置项保留调整能力。任一条件不满足时重新累计完整静止窗口，避免把手持动作写入重力和 bias 初值。
+- 使用静止窗口的平均角速度初始化 gyro bias，不再计算 `mean_gyr` 后仍强制写入零 bias。
+- 当前 Allan 参数先保留；最终量程和运行模式稳定后，重新录制 1 到 2 小时静止 IMU 数据并更新噪声参数。
+
+验证标准：
+
+- 使用测试驱动方式覆盖近场阈值、零点、NaN/Inf、合法与非法逐点时间、静止窗口判断和 gyro bias 初始化。
+- 构建并测试 `lx_camera_ros`、`fast_livo`，检查 launch 参数传递和安装目录内容。
+- 硬件验收时先静止初始化，再执行慢速与快速手持旋转/平移；确认 IMU 不再贴量程边界，当前配准点云没有随曝光分区产生明显拉线，重新静止后位姿不继续发散。
+- 本设计不修改 `src/fast_livo/rviz_cfg/fast_livo2.rviz`，也不改变用户现有的历史点云观察方式。
+
 ## Codex 工作规则
 
 当前工作空间的 Codex 用户规则写在 `AGENTS.md`。后续 Codex 在本目录内工作时，应先读取并遵循该文件。
 
 ## 更新记录
 
+- 2026-07-10：记录 FAST-LIVO2 快速手持扫描稳定性修复设计：默认采用约 `±500 deg/s` 陀螺量程，显式关闭会破坏逐点时间的 RGBD 对齐和 3D 反畸变，修复近场阈值和异常点时间处理，并采用约 3 秒静止 IMU 初始化；现有 RViz 观察配置保持不变。
 - 2026-07-09：补充 MRDVS 原始驱动两种点云启动方式：`lx_camera_ros.launch.py` 用于 RGBD 对齐彩色点云显示，`lx_lidar_ros.launch.py` 用于带强度和点级时间戳的 SLAM 点云。
 - 2026-07-09：FAST-LIVO2 的 LIO 更新增加零有效约束保护；当 `effective feature num` 为 0 时不再计算 NaN 平均残差、不执行 LIO EKF 更新，也不把当前帧写入 voxel map，避免跟踪丢失后的坏帧污染地图。
 - 2026-07-09：修复 FAST-LIVO2 遇到 IMU 前向大跳变后持续丢弃后续 IMU 导致卡住的问题；现在大跳变会清空旧 LiDAR/RGB/IMU 同步缓冲和 IMU 传播缓冲，并把当前 IMU 作为新的时间基准继续接收。
