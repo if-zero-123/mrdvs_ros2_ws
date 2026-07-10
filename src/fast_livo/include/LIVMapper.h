@@ -85,6 +85,7 @@ public:
 
   double res_mean_last = 0.05;
   double gyr_cov = 0, acc_cov = 0, b_gyr_cov = 0, b_acc_cov = 0, inv_expo_cov = 0;
+  double imu_init_max_gyr_norm = 0.10, imu_init_acc_norm_tolerance = 0.75;
   double blind_rgb_points = 0.0;
   double last_timestamp_lidar = -1.0, last_timestamp_imu = -1.0, last_timestamp_img = -1.0;
   double filter_size_surf_min = 0;
@@ -112,6 +113,7 @@ public:
   bool sync_jump_flag = false;
 
   bool lidar_pushed = false, imu_en, gravity_est_en, flg_reset = false, ba_bg_est_en = true;
+  bool stationary_init_en = false;
   bool dense_map_en = false;
   int img_en = 1, imu_int_frame = 3;
   bool normal_en = true;

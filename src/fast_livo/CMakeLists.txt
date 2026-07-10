@@ -145,6 +145,7 @@ add_library(lio src/voxel_map.cpp)
 add_library(pre src/preprocess.cpp)
 target_compile_options(pre PRIVATE -fno-fast-math)
 add_library(imu_proc src/IMU_Processing.cpp)
+target_compile_options(imu_proc PRIVATE -fno-fast-math)
 add_library(laser_mapping src/LIVMapper.cpp)
 add_library(utils src/utils.cpp)
 
@@ -201,6 +202,14 @@ install(
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(test_imu_initialization_utils
+    test/test_imu_initialization_utils.cpp
+  )
+  target_include_directories(test_imu_initialization_utils PRIVATE
+    include
+  )
+  target_compile_options(test_imu_initialization_utils PRIVATE -fno-fast-math)
 
   ament_add_gtest(test_mrdvs_time_utils
     test/test_mrdvs_time_utils.cpp

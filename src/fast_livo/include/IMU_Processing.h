@@ -16,6 +16,7 @@ which is included as part of this source code package.
 #include <Eigen/Eigen>
 #include <fstream>
 #include "common_lib.h"
+#include "imu_initialization_utils.h"
 #include <condition_variable>
 #include <nav_msgs/msg/odometry.hpp>
 #include <utils/so3_math.h>
@@ -42,6 +43,10 @@ public:
   void set_acc_bias_cov(const V3D &b_a);
   void set_inv_expo_cov(const double &inv_expo);
   void set_imu_init_frame_num(const int &num);
+  void configure_imu_initialization(
+    bool stationary_init_en,
+    const fast_livo::ImuInitializationConfig &config);
+  void reset_imu_initialization_window();
   void disable_imu();
   void disable_gravity_est();
   void disable_bias_est();
@@ -81,6 +86,9 @@ private:
   double last_prop_end_time;
   double time_last_scan;
   int init_iter_num = 1, MAX_INI_COUNT = 20;
+  fast_livo::ImuInitializationConfig imu_initialization_config_{20, G_m_s2, 0.10, 0.75};
+  fast_livo::ImuInitializationAccumulator imu_initialization_accumulator_{imu_initialization_config_};
+  bool stationary_init_en_ = false;
   bool b_first_frame = true;
   bool imu_en = true;
   bool gravity_est_en = true;

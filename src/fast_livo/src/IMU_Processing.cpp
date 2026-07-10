@@ -13,10 +13,22 @@ which is included as part of this source code package.
 #include "IMU_Processing.h"
 #include <rcpputils/asserts.hpp>
 
+#include <utility>
+
 const bool time_list(PointType &x, PointType &y) { return (x.curvature < y.curvature); }
 
-ImuProcess::ImuProcess() : Eye3d(M3D::Identity()),
-                           Zero3d(0, 0, 0), b_first_frame(true), imu_need_init(true)
+ImuProcess::ImuProcess()
+  : IMU_mean_acc_norm(0.0),
+    unbiased_gyr(V3D::Zero()),
+    first_lidar_time(0.0),
+    imu_time_init(false),
+    imu_need_init(true),
+    Eye3d(M3D::Identity()),
+    Zero3d(V3D::Zero()),
+    lidar_type(0),
+    last_prop_end_time(0.0),
+    time_last_scan(0.0),
+    b_first_frame(true)
 {
   init_iter_num = 1;
   cov_acc = V3D(0.1, 0.1, 0.1);
@@ -32,6 +44,8 @@ ImuProcess::ImuProcess() : Eye3d(M3D::Identity()),
   Lid_rot_to_IMU = Eye3d;
   last_imu.reset(new sensor_msgs::msg::Imu());
   cur_pcl_un_.reset(new PointCloudXYZI());
+  pcl_wait_proc.clear();
+  IMUpose.clear();
 }
 
 ImuProcess::~ImuProcess() {}
@@ -42,9 +56,18 @@ void ImuProcess::Reset()
   mean_acc = V3D(0, 0, -1.0);
   mean_gyr = V3D(0, 0, 0);
   angvel_last = Zero3d;
+  acc_s_last = Zero3d;
+  unbiased_gyr = Zero3d;
+  IMU_mean_acc_norm = 0.0;
+  b_first_frame = true;
+  imu_time_init = false;
   imu_need_init = true;
+  last_prop_end_time = 0.0;
+  time_last_scan = 0.0;
   init_iter_num = 1;
+  pcl_wait_proc.clear();
   IMUpose.clear();
+  imu_initialization_accumulator_.reset();
   last_imu.reset(new sensor_msgs::msg::Imu());
   cur_pcl_un_.reset(new PointCloudXYZI());
 }
@@ -104,12 +127,69 @@ void ImuProcess::set_acc_bias_cov(const V3D &b_a) { cov_bias_acc = b_a; }
 
 void ImuProcess::set_imu_init_frame_num(const int &num) { MAX_INI_COUNT = num; }
 
+void ImuProcess::configure_imu_initialization(
+  bool stationary_init_en,
+  const fast_livo::ImuInitializationConfig &config)
+{
+  fast_livo::ImuInitializationAccumulator configured_accumulator(config);
+  imu_initialization_config_ = config;
+  imu_initialization_accumulator_ = std::move(configured_accumulator);
+  stationary_init_en_ = stationary_init_en;
+}
+
+void ImuProcess::reset_imu_initialization_window()
+{
+  if (imu_need_init && stationary_init_en_)
+  {
+    imu_initialization_accumulator_.reset();
+  }
+}
+
 void ImuProcess::IMU_init(const MeasureGroup &meas, StatesGroup &state_inout, int &N)
 {
   /** 1. initializing the gravity, gyro bias, acc and gyro covariance
    ** 2. normalize the acceleration measurenments to unit gravity **/
-  RCLCPP_INFO(rclcpp::get_logger(""),"IMU Initializing: %.1f %%", double(N) / MAX_INI_COUNT * 100);
   V3D cur_acc, cur_gyr;
+
+  if (stationary_init_en_)
+  {
+    b_first_frame = false;
+    for (const auto &imu : meas.imu)
+    {
+      const auto &imu_acc = imu->linear_acceleration;
+      const auto &gyr_acc = imu->angular_velocity;
+      cur_acc << imu_acc.x, imu_acc.y, imu_acc.z;
+      cur_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
+      imu_initialization_accumulator_.addSample(cur_acc, cur_gyr);
+    }
+
+    if (imu_initialization_accumulator_.sampleCount() > 0)
+    {
+      mean_acc = imu_initialization_accumulator_.meanAcc();
+      mean_gyr = imu_initialization_accumulator_.meanGyro();
+      IMU_mean_acc_norm = mean_acc.norm();
+    }
+
+    if (imu_initialization_accumulator_.ready())
+    {
+      const auto estimate = fast_livo::makeImuInitializationEstimate(
+        imu_initialization_accumulator_.meanAcc(),
+        imu_initialization_accumulator_.meanGyro(),
+        imu_initialization_config_.gravity_magnitude);
+      state_inout.gravity = estimate.gravity;
+      state_inout.bias_g = estimate.gyro_bias;
+      state_inout.rot_end = Eye3d;
+      IMU_mean_acc_norm = estimate.mean_acc_norm;
+    }
+
+    RCLCPP_INFO(
+      rclcpp::get_logger(""), "Stationary IMU Initializing: %.1f %%",
+      static_cast<double>(imu_initialization_accumulator_.sampleCount()) /
+        imu_initialization_config_.required_samples * 100.0);
+    return;
+  }
+
+  RCLCPP_INFO(rclcpp::get_logger(""),"IMU Initializing: %.1f %%", double(N) / MAX_INI_COUNT * 100);
 
   if (b_first_frame)
   {
@@ -148,7 +228,6 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, StatesGroup &state_inout, in
   state_inout.rot_end = Eye3d; // Exp(mean_acc.cross(V3D(0, 0, -1 / scale_gravity)));
   state_inout.bias_g = Zero3d; // mean_gyr;
 
-  last_imu = meas.imu.back();
 }
 
 void ImuProcess::Forward_without_imu(LidarMeasureGroup &meas, StatesGroup &state_inout, PointCloudXYZI &pcl_out)
@@ -557,18 +636,21 @@ void ImuProcess::Process2(LidarMeasureGroup &lidar_meas, StatesGroup &stat, Poin
 
   if (imu_need_init)
   {
-    double pcl_end_time = lidar_meas.lio_vio_flg == LIO ? meas.lio_time : meas.vio_time;
-    // lidar_meas.last_lio_update_time = pcl_end_time;
+    const double initialization_end_time =
+      lidar_meas.lio_vio_flg == LIO ? meas.lio_time : meas.vio_time;
 
-    if (meas.imu.empty()) { return; };
-    /// The very first lidar frame
-    IMU_init(meas, stat, init_iter_num);
+    if (!meas.imu.empty())
+    {
+      IMU_init(meas, stat, init_iter_num);
+      last_imu = meas.imu.back();
+    }
 
-    imu_need_init = true;
+    fast_livo::advanceImuInitializationWatermarks(
+      initialization_end_time, lidar_meas.last_lio_update_time, last_prop_end_time);
 
-    last_imu = meas.imu.back();
-
-    if (init_iter_num > MAX_INI_COUNT)
+    const bool initialization_complete = stationary_init_en_ ?
+      imu_initialization_accumulator_.ready() : init_iter_num > MAX_INI_COUNT;
+    if (initialization_complete)
     {
       // cov_acc *= pow(G_m_s2 / mean_acc.norm(), 2);
       imu_need_init = false;

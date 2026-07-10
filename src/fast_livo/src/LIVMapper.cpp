@@ -88,6 +88,9 @@ void LIVMapper::readParameters(rclcpp::Node::SharedPtr &node)
   this->node->declare_parameter<double>("imu.b_gyr_cov", 0.0001);
   this->node->declare_parameter<double>("imu.b_acc_cov", 0.0001);
   this->node->declare_parameter<int>("imu.imu_int_frame", 30);
+  this->node->declare_parameter<bool>("imu.stationary_init_en", false);
+  this->node->declare_parameter<double>("imu.imu_init_max_gyr_norm", 0.10);
+  this->node->declare_parameter<double>("imu.imu_init_acc_norm_tolerance", 0.75);
   this->node->declare_parameter<bool>("imu.imu_en", true);
   this->node->declare_parameter<bool>("imu.gravity_est_en", true);
   this->node->declare_parameter<bool>("imu.ba_bg_est_en", true);
@@ -155,6 +158,9 @@ void LIVMapper::readParameters(rclcpp::Node::SharedPtr &node)
   this->node->get_parameter("imu.b_gyr_cov", b_gyr_cov);
   this->node->get_parameter("imu.b_acc_cov", b_acc_cov);
   this->node->get_parameter("imu.imu_int_frame", imu_int_frame);
+  this->node->get_parameter("imu.stationary_init_en", stationary_init_en);
+  this->node->get_parameter("imu.imu_init_max_gyr_norm", imu_init_max_gyr_norm);
+  this->node->get_parameter("imu.imu_init_acc_norm_tolerance", imu_init_acc_norm_tolerance);
   this->node->get_parameter("imu.imu_en", imu_en);
   this->node->get_parameter("imu.gravity_est_en", gravity_est_en);
   this->node->get_parameter("imu.ba_bg_est_en", ba_bg_est_en);
@@ -231,6 +237,9 @@ void LIVMapper::initializeComponents(rclcpp::Node::SharedPtr &node)
   p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
   p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
   p_imu->set_imu_init_frame_num(imu_int_frame);
+  p_imu->configure_imu_initialization(
+    stationary_init_en,
+    {imu_int_frame, G_m_s2, imu_init_max_gyr_norm, imu_init_acc_norm_tolerance});
 
   if (!imu_en) p_imu->disable_imu();
   if (!gravity_est_en) p_imu->disable_gravity_est();
@@ -899,6 +908,7 @@ void LIVMapper::imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr &msg_in)
 
   if (fast_livo::shouldDropImuTimestamp(timestamp, last_timestamp_imu))
   {
+    p_imu->reset_imu_initialization_window();
     mtx_buffer.unlock();
     sig_buffer.notify_all();
     if (timestamp < last_timestamp_imu)
@@ -919,6 +929,7 @@ void LIVMapper::imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr &msg_in)
     fast_livo::shouldResetImuTimestampStream(timestamp, last_timestamp_imu, kMaxAcceptedImuGapSec);
   if (reset_imu_stream)
   {
+    p_imu->reset_imu_initialization_window();
     RCLCPP_WARN(
       this->node->get_logger(),
       "imu time stamp jumps %.4lf seconds, reset sensor sync buffers",
