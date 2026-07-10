@@ -1,4 +1,5 @@
 ﻿#include "lx_camera/lx_camera.h"
+#include "lx_camera/slam_sensor_settings.h"
 #include "lx_camera.h"
 #include "rclcpp/callback_group.hpp"
 #include "sensor_msgs/msg/point_cloud.hpp"
@@ -178,6 +179,7 @@ LxCamera::LxCamera(DcLib *dynamic_lib) : Node("lx_camera_node") {
   this->get_parameter<int>("is_xyz", is_xyz_);
   RCLCPP_INFO(this->get_logger(), "publish xyz: %d", is_xyz_);
   RCLCPP_INFO(this->get_logger(), "publish depth: %d", is_depth_);
+  const bool is_slam_sensor_mode = is_xyz_ == 2;
   Check("LX_BOOL_ENABLE_3D_DEPTH_STREAM",
         DcSetBoolValue(handle_, LX_BOOL_ENABLE_3D_DEPTH_STREAM,
                         is_xyz_ || is_depth_));
@@ -186,12 +188,85 @@ LxCamera::LxCamera(DcLib *dynamic_lib) : Node("lx_camera_node") {
   SET_INT_PARAM(LX_BOOL_ENABLE_2D_STREAM);
   SET_INT_PARAM(LX_BOOL_ENABLE_IMU);
 
+  auto set_critical_int =
+      [this](int command, const char *name, int expected) {
+        RCLCPP_INFO(this->get_logger(), "%s: %d", name, expected);
+        const auto state = DcSetIntValue(handle_, command, expected);
+        if (LX_SUCCESS != state) {
+          Check(name, state);
+          RCLCPP_ERROR(this->get_logger(),
+                       "Failed to apply critical sensor setting %s: "
+                       "expected=%d, SDK error code=%d; DcStartStream blocked",
+                       name, expected, static_cast<int>(state));
+          return false;
+        }
+        return true;
+      };
+  auto set_critical_bool =
+      [this](int command, const char *name, bool expected) {
+        RCLCPP_INFO(this->get_logger(), "%s: %s", name,
+                    expected ? "true" : "false");
+        const auto state = DcSetBoolValue(handle_, command, expected);
+        if (LX_SUCCESS != state) {
+          Check(name, state);
+          RCLCPP_ERROR(this->get_logger(),
+                       "Failed to apply critical sensor setting %s: "
+                       "expected=%s, SDK error code=%d; DcStartStream blocked",
+                       name, expected ? "true" : "false",
+                       static_cast<int>(state));
+          return false;
+        }
+        return true;
+      };
+
   SET_INT_PARAM(LX_INT_IMU_ACCELERATION_LEVEL);
-  SET_INT_PARAM(LX_INT_IMU_ANGULAR_RANGE_LEVEL);
+
+  int imu_angular_range_level = is_slam_sensor_mode ? 2 : -1;
+  this->declare_parameter<int>("LX_INT_IMU_ANGULAR_RANGE_LEVEL",
+                               imu_angular_range_level);
+  this->get_parameter<int>("LX_INT_IMU_ANGULAR_RANGE_LEVEL",
+                           imu_angular_range_level);
+  if (is_slam_sensor_mode || imu_angular_range_level >= 0) {
+    if (!lx_camera_ros::isValidImuAngularRangeLevel(
+            imu_angular_range_level)) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "Invalid critical sensor setting "
+                   "LX_INT_IMU_ANGULAR_RANGE_LEVEL: requested=%d, "
+                   "valid SDK range=[0, 4]; DcStartStream blocked",
+                   imu_angular_range_level);
+      return;
+    }
+    if (!set_critical_int(LX_INT_IMU_ANGULAR_RANGE_LEVEL,
+                          "LX_INT_IMU_ANGULAR_RANGE_LEVEL",
+                          imu_angular_range_level)) {
+      return;
+    }
+    expected_imu_angular_range_level_ = imu_angular_range_level;
+  }
+
   SET_INT_PARAM(LX_INT_XYZ_UNIT);
   SET_INT_PARAM(LX_INT_XYZ_COORDINATE);
 
-  SET_INT_PARAM(LX_INT_RGBD_ALIGN_MODE);
+  int rgbd_align_mode = is_slam_sensor_mode ? 0 : -1;
+  this->declare_parameter<int>("LX_INT_RGBD_ALIGN_MODE", rgbd_align_mode);
+  this->get_parameter<int>("LX_INT_RGBD_ALIGN_MODE", rgbd_align_mode);
+  if (is_slam_sensor_mode &&
+      !lx_camera_ros::criticalSensorSettingMatches(0, rgbd_align_mode)) {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Invalid SLAM sensor setting LX_INT_RGBD_ALIGN_MODE: "
+                 "expected=0, requested=%d; DcStartStream blocked",
+                 rgbd_align_mode);
+    return;
+  }
+  if (rgbd_align_mode >= 0 &&
+      !set_critical_int(LX_INT_RGBD_ALIGN_MODE, "LX_INT_RGBD_ALIGN_MODE",
+                        rgbd_align_mode)) {
+    return;
+  }
+  if (rgbd_align_mode >= 0) {
+    expected_rgbd_align_mode_ = rgbd_align_mode;
+  }
+
   SET_INT_PARAM(LX_INT_ALGORITHM_MODE);
   SET_INT_PARAM(LX_INT_WORK_MODE);
   SET_INT_PARAM(LX_INT_3D_FPS);
@@ -200,7 +275,30 @@ LxCamera::LxCamera(DcLib *dynamic_lib) : Node("lx_camera_node") {
   SET_INT_PARAM(LX_INT_2D_UNDISTORT_SCALE);
   SET_INT_PARAM(LX_INT_2D_BINNING_MODE);
 
-  SET_INT_PARAM(LX_BOOL_ENABLE_3D_UNDISTORT);
+  int enable_3d_undistort = is_slam_sensor_mode ? 0 : -1;
+  this->declare_parameter<int>("LX_BOOL_ENABLE_3D_UNDISTORT",
+                               enable_3d_undistort);
+  this->get_parameter<int>("LX_BOOL_ENABLE_3D_UNDISTORT",
+                           enable_3d_undistort);
+  if (is_slam_sensor_mode &&
+      !lx_camera_ros::criticalSensorSettingMatches(0,
+                                                    enable_3d_undistort)) {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Invalid SLAM sensor setting LX_BOOL_ENABLE_3D_UNDISTORT: "
+                 "expected=0, requested=%d; DcStartStream blocked",
+                 enable_3d_undistort);
+    return;
+  }
+  if (enable_3d_undistort >= 0 &&
+      !set_critical_bool(LX_BOOL_ENABLE_3D_UNDISTORT,
+                         "LX_BOOL_ENABLE_3D_UNDISTORT",
+                         enable_3d_undistort != 0)) {
+    return;
+  }
+  if (enable_3d_undistort >= 0) {
+    expected_enable_3d_undistort_ = enable_3d_undistort;
+  }
+
   SET_INT_PARAM(LX_INT_3D_UNDISTORT_SCALE);
   SET_INT_PARAM(LX_INT_3D_BINNING_MODE);
 
@@ -233,9 +331,10 @@ LxCamera::LxCamera(DcLib *dynamic_lib) : Node("lx_camera_node") {
   RCLCPP_INFO(this->get_logger(), "roll: %f", install_roll_);
   RCLCPP_INFO(this->get_logger(), "publish base-tof tf: %s", publish_base_tof_tf_ ? "true" : "false");
 
+  critical_sensor_settings_configured_ = true;
   DcRegisterImuDataCallback(handle_, ImuDataCallback, this);
-  if (!is_start_) {
-    Start();
+  if (!is_start_ && LX_SUCCESS != Start()) {
+    return;
   }
 
   Run();
@@ -247,6 +346,31 @@ LxCamera::~LxCamera() {
 }
 
 int LxCamera::Start() {
+  if (!critical_sensor_settings_configured_) {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Critical sensor settings were not configured; "
+                 "DcStartStream blocked");
+    return static_cast<int>(LX_ERROR);
+  }
+  if (expected_imu_angular_range_level_ >= 0 &&
+      !VerifyCriticalIntParameter(LX_INT_IMU_ANGULAR_RANGE_LEVEL,
+                                  "LX_INT_IMU_ANGULAR_RANGE_LEVEL",
+                                  expected_imu_angular_range_level_)) {
+    return static_cast<int>(LX_ERROR);
+  }
+  if (expected_rgbd_align_mode_ >= 0 &&
+      !VerifyCriticalIntParameter(LX_INT_RGBD_ALIGN_MODE,
+                                  "LX_INT_RGBD_ALIGN_MODE",
+                                  expected_rgbd_align_mode_)) {
+    return static_cast<int>(LX_ERROR);
+  }
+  if (expected_enable_3d_undistort_ >= 0 &&
+      !VerifyCriticalBoolParameter(LX_BOOL_ENABLE_3D_UNDISTORT,
+                                   "LX_BOOL_ENABLE_3D_UNDISTORT",
+                                   expected_enable_3d_undistort_ != 0)) {
+    return static_cast<int>(LX_ERROR);
+  }
+
   LxIntValueInfo int_value;
   DcGetIntValue(handle_, LX_INT_3D_IMAGE_WIDTH, &int_value);
   tof_info_.width = int_value.cur_value;
@@ -821,6 +945,60 @@ int LxCamera::Check(std::string command, int state) {
   pub_error_->publish(msg); // 推送错误信息
   RCLCPP_ERROR(this->get_logger(), "%s", msg.data.c_str());
   return state;
+}
+
+bool LxCamera::VerifyCriticalIntParameter(int command, const char *name,
+                                          int expected) {
+  LxIntValueInfo value{};
+  const auto state = DcGetIntValue(handle_, command, &value);
+  if (LX_SUCCESS != state) {
+    Check(name, state);
+    RCLCPP_ERROR(this->get_logger(),
+                 "Failed to read back critical sensor setting %s: "
+                 "expected=%d, SDK error code=%d; DcStartStream blocked",
+                 name, expected, static_cast<int>(state));
+    return false;
+  }
+  if (!lx_camera_ros::criticalSensorSettingMatches(expected,
+                                                    value.cur_value)) {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Critical sensor setting %s readback mismatch: "
+                 "expected=%d, actual=%d; DcStartStream blocked",
+                 name, expected, value.cur_value);
+    return false;
+  }
+  RCLCPP_INFO(this->get_logger(),
+              "Verified critical sensor setting %s: actual=%d", name,
+              value.cur_value);
+  return true;
+}
+
+bool LxCamera::VerifyCriticalBoolParameter(int command, const char *name,
+                                           bool expected) {
+  bool value = false;
+  const auto state = DcGetBoolValue(handle_, command, &value);
+  if (LX_SUCCESS != state) {
+    Check(name, state);
+    RCLCPP_ERROR(this->get_logger(),
+                 "Failed to read back critical sensor setting %s: "
+                 "expected=%s, SDK error code=%d; DcStartStream blocked",
+                 name, expected ? "true" : "false",
+                 static_cast<int>(state));
+    return false;
+  }
+  if (!lx_camera_ros::criticalSensorSettingMatches(
+          static_cast<int>(expected), static_cast<int>(value))) {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Critical sensor setting %s readback mismatch: "
+                 "expected=%s, actual=%s; DcStartStream blocked",
+                 name, expected ? "true" : "false",
+                 value ? "true" : "false");
+    return false;
+  }
+  RCLCPP_INFO(this->get_logger(),
+              "Verified critical sensor setting %s: actual=%s", name,
+              value ? "true" : "false");
+  return true;
 }
 
 bool LxCamera::LxString(

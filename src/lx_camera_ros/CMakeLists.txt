@@ -134,6 +134,11 @@ ament_add_gtest(test_imu_extrinsic_format
 				${IMU_EXTRINSIC_FORMAT_SRC})
 target_include_directories(test_imu_extrinsic_format PRIVATE
 				${PROJECT_SOURCE_DIR}/src)
+
+ament_add_gtest(test_slam_sensor_settings
+				test/test_slam_sensor_settings.cpp)
+target_include_directories(test_slam_sensor_settings PRIVATE
+				${PROJECT_SOURCE_DIR}/src)
 endif()
 
 

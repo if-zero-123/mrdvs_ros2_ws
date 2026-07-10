@@ -11,6 +11,7 @@ from launch.substitutions import LaunchConfiguration
 
 def generate_launch_description():
     camera_ip = LaunchConfiguration("camera_ip")
+    imu_angular_range_level = LaunchConfiguration("imu_angular_range_level")
     fastlivo_delay = LaunchConfiguration("fastlivo_delay")
     use_rviz = LaunchConfiguration("use_rviz")
     mrdvs_params_file = LaunchConfiguration("mrdvs_params_file")
@@ -39,6 +40,11 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument("camera_ip", default_value="192.168.100.82", description="MRDVS camera IP"),
+        DeclareLaunchArgument(
+            "imu_angular_range_level",
+            default_value="2",
+            description="MRDVS IMU angular velocity range level [0-4]",
+        ),
         DeclareLaunchArgument("fastlivo_delay", default_value="3.0", description="Delay before starting FAST-LIVO2"),
         DeclareLaunchArgument("use_rviz", default_value="False", description="Whether to launch FAST-LIVO2 RViz"),
         DeclareLaunchArgument(
@@ -86,6 +92,7 @@ def generate_launch_description():
             launch_arguments={
                 "ip": camera_ip,
                 "enable_rviz": "false",
+                "imu_angular_range_level": imu_angular_range_level,
             }.items(),
         ),
         TimerAction(

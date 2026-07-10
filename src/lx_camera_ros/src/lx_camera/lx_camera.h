@@ -82,6 +82,8 @@ public:
 
 private:
   int Check(std::string command, int state);
+  bool VerifyCriticalIntParameter(int command, const char *name, int expected);
+  bool VerifyCriticalBoolParameter(int command, const char *name, bool expected);
   bool LxString(const lx_camera_ros::srv::LxString::Request::SharedPtr req,
                 const lx_camera_ros::srv::LxString::Response::SharedPtr res);
   bool LxFloat(const lx_camera_ros::srv::LxFloat::Request::SharedPtr req,
@@ -128,6 +130,10 @@ private:
   int inside_app_ = 0;
   int rgb_channel_ = 0;
   int lx_rgbd_align = 0;
+  bool critical_sensor_settings_configured_ = false;
+  int expected_imu_angular_range_level_ = -1;
+  int expected_rgbd_align_mode_ = -1;
+  int expected_enable_3d_undistort_ = -1;
   bool publish_base_tof_tf_ = true;
   float install_x_ = 0.0, install_y_ = 0.0, install_z_ = 0.0,
         install_yaw_ = 0.0, install_roll_ = 0.0, install_pitch_ = 0.0;
