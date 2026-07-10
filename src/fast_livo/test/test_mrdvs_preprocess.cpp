@@ -103,7 +103,7 @@ TEST(PreprocessMrdvsHandler, KeepsOnlySpatiallyAndTemporallyValidPointsSortedByT
 
   add_point(0.0F, 0.0F, 0.0F, cloud_start_us, 1U);
   add_point(0.18F, 0.0F, 0.0F, cloud_start_us + 1000.0, 2U);
-  add_point(0.195F, 0.0F, 0.0F, cloud_start_us + 50000.0, 3U);
+  add_point(0.19F, 0.0F, 0.0F, cloud_start_us + 50000.0, 3U);
   add_point(0.20F, 0.0F, 0.0F, cloud_start_us + 12345.0, 4U);
   add_point(0.21F, 0.0F, 0.0F, 0.0, 5U);
   add_point(0.22F, 0.0F, 0.0F, cloud_start_us + 250000.0, 6U);

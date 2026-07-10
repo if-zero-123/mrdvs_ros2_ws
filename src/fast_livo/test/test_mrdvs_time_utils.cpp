@@ -51,6 +51,20 @@ TEST(MrdvsTimeUtils, ParsesAbsoluteMicrosecondsWithinFrame)
   EXPECT_NEAR(result.relative_ms, 12.345, 1e-9);
 }
 
+TEST(MrdvsTimeUtils, AcceptsAbsoluteMicrosecondsWithLowMonotonicTimebase)
+{
+  constexpr double cloud_start_sec = 0.1;
+  constexpr double cloud_start_us = cloud_start_sec * 1.0e6;
+
+  const auto at_start = fast_livo::parseMrdvsTimestamp(cloud_start_us, cloud_start_sec, 200.0);
+  const auto within_frame = fast_livo::parseMrdvsTimestamp(cloud_start_us + 12345.0, cloud_start_sec, 200.0);
+
+  ASSERT_EQ(at_start.status, fast_livo::MrdvsTimestampStatus::kValid);
+  EXPECT_DOUBLE_EQ(at_start.relative_ms, 0.0);
+  ASSERT_EQ(within_frame.status, fast_livo::MrdvsTimestampStatus::kValid);
+  EXPECT_NEAR(within_frame.relative_ms, 12.345, 1e-9);
+}
+
 TEST(MrdvsTimeUtils, RejectsAbsoluteTimestampBeforeFrameStart)
 {
   constexpr double cloud_start_sec = 1000000.0;

@@ -27,7 +27,13 @@ inline MrdvsPointStatus classifyMrdvsPoint(double x, double y, double z, double 
     return MrdvsPointStatus::kZeroOrNear;
   }
 
-  if (blind_m > 0.0 && distance_squared < blind_m * blind_m)
+  // MRDVS PointCloud2 coordinates are float. Compare in that same precision
+  // domain so a coordinate encoded as exactly the configured boundary is not
+  // shifted just below a double-precision YAML value during promotion.
+  const double blind_at_coordinate_precision = static_cast<double>(static_cast<float>(blind_m));
+  if (
+    blind_at_coordinate_precision > 0.0 &&
+    distance_squared < blind_at_coordinate_precision * blind_at_coordinate_precision)
   {
     return MrdvsPointStatus::kZeroOrNear;
   }

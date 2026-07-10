@@ -24,6 +24,10 @@ struct MrdvsTimestampResult
   bool valid() const { return status == MrdvsTimestampStatus::kValid; }
 };
 
+// The verified MRDVS driver contract defines raw_timestamp as absolute
+// microseconds on the same timebase as the cloud header. This parser therefore
+// validates their numerical relationship without assuming a Unix epoch or a
+// minimum epoch magnitude; a low monotonic timebase is valid.
 inline MrdvsTimestampResult parseMrdvsTimestamp(
   double raw_timestamp,
   double cloud_start_sec,
