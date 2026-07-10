@@ -429,7 +429,7 @@ src/fast_livo/config/mrdvs_lidar_imu_init.yaml
 
 为了让 MRDVS 可以不依赖 Livox 驱动独立编译，FAST-LIVO2 的 Livox `CustomMsg` 输入被改成可选项，默认关闭。MRDVS 使用标准 `PointCloud2` 路径，不需要安装 `livox_ros_driver2`。
 
-### FAST-LIVO2 手持扫描稳定性修复设计（2026-07-10，待实施）
+### FAST-LIVO2 手持扫描稳定性修复设计（2026-07-10）
 
 本轮修复面向“启动后可静止初始化、随后进行较快手持旋转和平移扫描”的使用方式。现有 RViz 的历史点云累计用于人工观察，保持不变；修复范围只包含传感器配置、MRDVS 点云预处理和 IMU 初始化链路。
 
@@ -460,13 +460,283 @@ IMU 初始化设计：
 - 硬件验收时先静止初始化，再执行慢速与快速手持旋转/平移；确认 IMU 不再贴量程边界，当前配准点云没有随曝光分区产生明显拉线，重新静止后位姿不继续发散。
 - 本设计不修改 `src/fast_livo/rviz_cfg/fast_livo2.rviz`，也不改变用户现有的历史点云观察方式。
 
+### FAST-LIVO2 手持扫描稳定性实施计划
+
+> **执行要求：** 使用 `subagent-driven-development` 或 `executing-plans` 按阶段执行；每个生产代码修改必须先有能正确失败的回归测试。
+
+**目标：** 在保留现有 RViz 观察方式的前提下，消除 MRDVS 快速手持扫描中的陀螺饱和、无效近场点、异常逐点时间和不可靠 IMU 初值。
+
+**架构：** 驱动层负责设置并校验 SDK 关键模式；FAST-LIVO2 预处理层只接收空间坐标和逐点时间均有效的点；独立的 IMU 初始化累加器负责连续静止窗口、均值和 gyro bias。三个阶段分别测试、构建和提交，最后再做整体离线与硬件验收。
+
+**技术栈：** ROS2 Jazzy、C++17、Eigen、PCL、ament/GoogleTest、Python ROS2 launch。
+
+#### 全局约束
+
+- 不修改 `src/fast_livo/rviz_cfg/fast_livo2.rviz`。
+- MRDVS LiDAR 模式默认角速度量程为 `level 2`，约 `±500 deg/s`。
+- RGBD 对齐和 3D 反畸变在 LiDAR/SLAM 模式下必须显式为关闭状态。
+- 近场阈值为 `0.19m`，最大帧内点时间默认 `200ms`。
+- IMU 初始化需要 600 个连续静止样本；静止阈值为 `|gyro| <= 0.10rad/s`、`abs(||acc|| - 9.81) <= 0.75m/s^2`。
+- 项目说明、计划和更新记录只写入本 `README.md`，不创建其他 Markdown 文件。
+
+#### 阶段一：设置并校验 MRDVS SLAM 传感器模式
+
+**文件：**
+
+- 新建 `src/lx_camera_ros/src/lx_camera/slam_sensor_settings.h`
+- 新建 `src/lx_camera_ros/test/test_slam_sensor_settings.cpp`
+- 修改 `src/lx_camera_ros/src/lx_camera/lx_camera.h`
+- 修改 `src/lx_camera_ros/src/lx_camera/lx_camera.cpp`
+- 修改 `src/lx_camera_ros/launch/lx_lidar_ros.launch.py`
+- 修改 `src/fast_livo/launch/mrdvs_full_launch.py`
+- 修改 `src/lx_camera_ros/CMakeLists.txt`
+
+**接口：**
+
+```cpp
+namespace lx_camera_ros {
+bool isValidImuAngularRangeLevel(int level);
+bool criticalSensorSettingMatches(int requested, int actual);
+}
+
+bool LxCamera::VerifyCriticalIntParameter(int command, const char *name, int expected);
+bool LxCamera::VerifyCriticalBoolParameter(int command, const char *name, bool expected);
+```
+
+- [ ] 先在 `test_slam_sensor_settings.cpp` 注册并写入以下失败测试：
+
+```cpp
+#include "lx_camera/slam_sensor_settings.h"
+#include <gtest/gtest.h>
+
+TEST(SlamSensorSettings, AcceptsOnlySdkAngularRangeLevels)
+{
+  for (int level = 0; level <= 4; ++level)
+    EXPECT_TRUE(lx_camera_ros::isValidImuAngularRangeLevel(level));
+  EXPECT_FALSE(lx_camera_ros::isValidImuAngularRangeLevel(-1));
+  EXPECT_FALSE(lx_camera_ros::isValidImuAngularRangeLevel(5));
+}
+
+TEST(SlamSensorSettings, RequiresReadbackToMatchRequestedValue)
+{
+  EXPECT_TRUE(lx_camera_ros::criticalSensorSettingMatches(2, 2));
+  EXPECT_FALSE(lx_camera_ros::criticalSensorSettingMatches(2, 1));
+}
+```
+
+- [ ] 运行 `colcon build --packages-select lx_camera_ros --cmake-args -DBUILD_TESTING=ON`，确认因 `slam_sensor_settings.h` 或目标函数不存在而编译失败。
+- [ ] 实现纯函数和驱动读回校验；`DcGetIntValue`/`DcGetBoolValue` 失败或实际值不一致时抛出明确错误，禁止节点继续启流。
+- [ ] 在 `lx_lidar_ros.launch.py` 声明 `imu_angular_range_level`，默认值为 `2`，并传入以下参数：
+
+```python
+{"LX_INT_IMU_ANGULAR_RANGE_LEVEL": ParameterValue(imu_angular_range_level, value_type=int)},
+{"LX_INT_RGBD_ALIGN_MODE": 0},
+{"LX_BOOL_ENABLE_3D_UNDISTORT": 0},
+```
+
+- [ ] 在 `mrdvs_full_launch.py` 声明同名参数并只向 `lx_lidar_ros.launch.py` 透传，保持 FAST-LIVO2 YAML 和 RViz 参数不变。
+- [ ] 运行目标 gtest、`python3 -m py_compile` 检查两个 launch 文件，并用 `ros2 launch fast_livo mrdvs_full_launch.py --show-args` 确认量程参数默认值和覆盖入口存在。
+- [ ] 提交阶段一，提交信息使用 `fix: enforce MRDVS SLAM sensor settings`。
+
+#### 阶段二：修复 MRDVS 近场点与逐点时间过滤
+
+**文件：**
+
+- 新建 `src/fast_livo/include/mrdvs_preprocess_utils.h`
+- 修改 `src/fast_livo/include/mrdvs_time_utils.h`
+- 修改 `src/fast_livo/include/preprocess.h`
+- 修改 `src/fast_livo/src/preprocess.cpp`
+- 修改 `src/fast_livo/include/LIVMapper.h`
+- 修改 `src/fast_livo/src/LIVMapper.cpp`
+- 修改 `src/fast_livo/config/mrdvs.yaml`
+- 修改 `src/fast_livo/config/mrdvs_lidar_imu_init.yaml`
+- 修改 `src/fast_livo/test/test_mrdvs_time_utils.cpp`
+
+**接口：**
+
+```cpp
+namespace fast_livo {
+enum class MrdvsPointStatus { kValid, kNonFinite, kZeroOrNear };
+MrdvsPointStatus classifyMrdvsPoint(double x, double y, double z, double blind_m);
+
+enum class MrdvsTimestampStatus {
+  kValid, kNonFinite, kUnknownUnit, kNegative, kTooLarge
+};
+struct MrdvsTimestampResult {
+  MrdvsTimestampStatus status;
+  double relative_ms;
+  bool valid() const { return status == MrdvsTimestampStatus::kValid; }
+};
+MrdvsTimestampResult parseMrdvsTimestamp(
+  double raw_timestamp, double cloud_start_sec, double max_offset_ms);
+}
+
+void Preprocess::setBlind(double blind_m);
+```
+
+- [ ] 先扩展 `test_mrdvs_time_utils.cpp`，写入以下空间和时间失败测试：
+
+```cpp
+TEST(MrdvsPreprocessUtils, RejectsInvalidAndNearPoints)
+{
+  EXPECT_EQ(fast_livo::classifyMrdvsPoint(0.0, 0.0, 0.0, 0.19),
+            fast_livo::MrdvsPointStatus::kZeroOrNear);
+  EXPECT_EQ(fast_livo::classifyMrdvsPoint(0.18, 0.0, 0.0, 0.19),
+            fast_livo::MrdvsPointStatus::kZeroOrNear);
+  EXPECT_EQ(fast_livo::classifyMrdvsPoint(0.20, 0.0, 0.0, 0.19),
+            fast_livo::MrdvsPointStatus::kValid);
+  EXPECT_EQ(fast_livo::classifyMrdvsPoint(NAN, 0.0, 1.0, 0.19),
+            fast_livo::MrdvsPointStatus::kNonFinite);
+  EXPECT_EQ(fast_livo::classifyMrdvsPoint(INFINITY, 0.0, 1.0, 0.19),
+            fast_livo::MrdvsPointStatus::kNonFinite);
+}
+
+TEST(MrdvsTimeUtils, ReportsInvalidTimestampReasons)
+{
+  constexpr double start = 1000000.0;
+  EXPECT_TRUE(fast_livo::parseMrdvsTimestamp(start * 1e6, start, 200.0).valid());
+  EXPECT_TRUE(fast_livo::parseMrdvsTimestamp(0.0, start, 200.0).valid());
+  EXPECT_EQ(fast_livo::parseMrdvsTimestamp(start * 1e6 - 1.0, start, 200.0).status,
+            fast_livo::MrdvsTimestampStatus::kNegative);
+  EXPECT_EQ(fast_livo::parseMrdvsTimestamp(250000.0, start, 200.0).status,
+            fast_livo::MrdvsTimestampStatus::kTooLarge);
+  EXPECT_EQ(fast_livo::parseMrdvsTimestamp(1.0e9, start, 200.0).status,
+            fast_livo::MrdvsTimestampStatus::kUnknownUnit);
+  EXPECT_EQ(fast_livo::parseMrdvsTimestamp(NAN, start, 200.0).status,
+            fast_livo::MrdvsTimestampStatus::kNonFinite);
+}
+```
+
+- [ ] 运行 `colcon build --packages-select fast_livo --cmake-args -DBUILD_TESTING=ON`，确认新类型和函数不存在导致编译失败。
+- [ ] 实现两个纯工具；保留旧的 `mrdvsTimestampToRelativeMs` 兼容入口，但 MRDVS 生产路径只使用带状态的 `parseMrdvsTimestamp`。
+- [ ] 构造函数、`Preprocess::set()` 和 `LIVMapper` 参数加载统一调用 `setBlind()`，保证 `blind_sqr = blind * blind`；新增并读取 `preprocess.max_point_time_offset_ms: 200.0`。
+- [ ] 重写 `mrdvs_handler()` 的单点判断顺序：空间状态、时间状态、构造点、按相对毫秒排序；每 100 帧汇总一次近场和时间异常丢弃数量。
+- [ ] `standard_pcl_cbk()` 在预处理输出少于 2 点时不写入 LiDAR 缓冲，避免后续访问空点云的 `back()`。
+- [ ] 运行目标 gtest、全部 `fast_livo` gtest，并构建 `fast_livo`。
+- [ ] 提交阶段二，提交信息使用 `fix: validate MRDVS points and timestamps`。
+
+#### 阶段三：实现连续静止 IMU 初始化和 gyro bias 初值
+
+**文件：**
+
+- 新建 `src/fast_livo/include/imu_initialization_utils.h`
+- 新建 `src/fast_livo/test/test_imu_initialization_utils.cpp`
+- 修改 `src/fast_livo/include/IMU_Processing.h`
+- 修改 `src/fast_livo/src/IMU_Processing.cpp`
+- 修改 `src/fast_livo/include/LIVMapper.h`
+- 修改 `src/fast_livo/src/LIVMapper.cpp`
+- 修改 `src/fast_livo/config/mrdvs.yaml`
+- 修改 `src/fast_livo/config/mrdvs_lidar_imu_init.yaml`
+- 修改 `src/fast_livo/CMakeLists.txt`
+
+**接口：**
+
+```cpp
+namespace fast_livo {
+struct ImuInitializationConfig {
+  int required_samples;
+  double gravity_magnitude;
+  double max_gyro_norm;
+  double max_acc_norm_error;
+};
+
+class ImuInitializationAccumulator {
+public:
+  explicit ImuInitializationAccumulator(const ImuInitializationConfig &config);
+  // 返回 true 表示当前样本满足静止条件并被累计；返回 false 表示窗口已重置。
+  bool addSample(const Eigen::Vector3d &acc, const Eigen::Vector3d &gyro);
+  void reset();
+  bool ready() const;
+  int sampleCount() const;
+  const Eigen::Vector3d &meanAcc() const;
+  const Eigen::Vector3d &meanGyro() const;
+};
+}
+
+void ImuProcess::set_imu_init_thresholds(
+  double max_gyro_norm, double max_acc_norm_error);
+```
+
+- [ ] 先注册 `test_imu_initialization_utils` 并写入以下失败测试：
+
+```cpp
+TEST(ImuInitializationAccumulator, RequiresConsecutiveStationarySamples)
+{
+  fast_livo::ImuInitializationAccumulator acc({3, 9.81, 0.10, 0.75});
+  const Eigen::Vector3d static_acc(0.0, 0.0, 9.70);
+  EXPECT_TRUE(acc.addSample(static_acc, Eigen::Vector3d(0.01, -0.02, 0.005)));
+  EXPECT_TRUE(acc.addSample(static_acc, Eigen::Vector3d(0.02, -0.01, 0.005)));
+  EXPECT_FALSE(acc.ready());
+  EXPECT_TRUE(acc.addSample(static_acc, Eigen::Vector3d(0.00, -0.03, 0.005)));
+  EXPECT_TRUE(acc.ready());
+  EXPECT_EQ(acc.sampleCount(), 3);
+  EXPECT_TRUE(acc.meanGyro().isApprox(Eigen::Vector3d(0.01, -0.02, 0.005), 1e-12));
+}
+
+TEST(ImuInitializationAccumulator, MotionResetsTheWindow)
+{
+  fast_livo::ImuInitializationAccumulator acc({3, 9.81, 0.10, 0.75});
+  EXPECT_TRUE(acc.addSample(Eigen::Vector3d(0.0, 0.0, 9.70),
+                            Eigen::Vector3d(0.01, 0.0, 0.0)));
+  EXPECT_FALSE(acc.addSample(Eigen::Vector3d(0.0, 0.0, 9.70),
+                             Eigen::Vector3d(0.20, 0.0, 0.0)));
+  EXPECT_EQ(acc.sampleCount(), 0);
+}
+```
+
+- [ ] 运行 `colcon build --packages-select fast_livo --cmake-args -DBUILD_TESTING=ON`，确认因累加器尚不存在而编译失败。
+- [ ] 实现独立累加器并接入 `ImuProcess::Reset()`、`set_imu_init_frame_num()` 和 `IMU_init()`；只在累加器拥有有效样本时更新重力，完成时写入 `state_inout.bias_g = mean_gyr`。
+- [ ] 新增并读取 `imu.imu_init_max_gyr_norm` 和 `imu.imu_init_acc_norm_tolerance`，MRDVS 两份配置分别写入 `600`、`0.10`、`0.75`；完成条件统一为 `sampleCount() >= required_samples`。
+- [ ] 运行新 gtest、全部 `fast_livo` 测试并构建 `fast_livo`。
+- [ ] 提交阶段三，提交信息使用 `fix: require stationary IMU initialization`。
+
+#### 阶段四：集成验证、使用说明和最终提交
+
+**文件：**
+
+- 修改 `README.md`
+- 不修改 `src/fast_livo/rviz_cfg/fast_livo2.rviz`
+
+- [ ] 运行完整构建：
+
+```bash
+colcon build --packages-up-to fast_livo --symlink-install
+```
+
+- [ ] 运行完整测试并确认无失败：
+
+```bash
+colcon test --packages-select lx_camera_ros fast_livo --event-handlers console_direct+
+colcon test-result --verbose
+```
+
+- [ ] 检查 launch 语法、参数和安装目录：
+
+```bash
+python3 -m py_compile src/lx_camera_ros/launch/lx_lidar_ros.launch.py
+python3 -m py_compile src/fast_livo/launch/mrdvs_full_launch.py
+source install/setup.bash
+ros2 launch fast_livo mrdvs_full_launch.py --show-args
+```
+
+- [ ] 重新运行现有 bag 时间分析，确认输入仍为约 10Hz 点云、约 200Hz IMU，且当前有效逐点时间跨度落在 `200ms` 上限内：
+
+```bash
+source install/setup.bash
+tools/analyze_mrdvs_bag.py /home/zero/bag/mrdvs_livo_debug_20260708_155719 --max-clouds 300 --point-stride 4
+```
+
+- [ ] 使用 `git diff --exit-code 2b00c0d -- src/fast_livo/rviz_cfg/fast_livo2.rviz` 确认 RViz 配置相对设计基线没有变化。
+- [ ] 更新本节状态、启动方式、量程覆盖示例、3 秒静止要求、验证结果和未完成的硬件验收风险。
+- [ ] 提交集成阶段，提交信息使用 `docs: document handheld FAST-LIVO stability fixes`，创建快照标签并推送当前功能分支。
+
 ## Codex 工作规则
 
 当前工作空间的 Codex 用户规则写在 `AGENTS.md`。后续 Codex 在本目录内工作时，应先读取并遵循该文件。
 
 ## 更新记录
 
-- 2026-07-10：记录 FAST-LIVO2 快速手持扫描稳定性修复设计：默认采用约 `±500 deg/s` 陀螺量程，显式关闭会破坏逐点时间的 RGBD 对齐和 3D 反畸变，修复近场阈值和异常点时间处理，并采用约 3 秒静止 IMU 初始化；现有 RViz 观察配置保持不变。
+- 2026-07-10：记录 FAST-LIVO2 快速手持扫描稳定性修复设计和测试驱动实施计划：默认采用约 `±500 deg/s` 陀螺量程，显式关闭会破坏逐点时间的 RGBD 对齐和 3D 反畸变，修复近场阈值和异常点时间处理，并采用约 3 秒静止 IMU 初始化；现有 RViz 观察配置保持不变。
 - 2026-07-09：补充 MRDVS 原始驱动两种点云启动方式：`lx_camera_ros.launch.py` 用于 RGBD 对齐彩色点云显示，`lx_lidar_ros.launch.py` 用于带强度和点级时间戳的 SLAM 点云。
 - 2026-07-09：FAST-LIVO2 的 LIO 更新增加零有效约束保护；当 `effective feature num` 为 0 时不再计算 NaN 平均残差、不执行 LIO EKF 更新，也不把当前帧写入 voxel map，避免跟踪丢失后的坏帧污染地图。
 - 2026-07-09：修复 FAST-LIVO2 遇到 IMU 前向大跳变后持续丢弃后续 IMU 导致卡住的问题；现在大跳变会清空旧 LiDAR/RGB/IMU 同步缓冲和 IMU 传播缓冲，并把当前 IMU 作为新的时间基准继续接收。
