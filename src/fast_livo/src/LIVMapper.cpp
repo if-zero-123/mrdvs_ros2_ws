@@ -12,6 +12,7 @@ which is included as part of this source code package.
 
 #include "LIVMapper.h"
 #include "imu_time_filter.h"
+#include "mrdvs_preprocess_utils.h"
 #include <vikit/camera_loader.h>
 
 using namespace Sophus;
@@ -92,6 +93,7 @@ void LIVMapper::readParameters(rclcpp::Node::SharedPtr &node)
   this->node->declare_parameter<bool>("imu.ba_bg_est_en", true);
 
   this->node->declare_parameter<double>("preprocess.blind", 0.01);
+  this->node->declare_parameter<double>("preprocess.max_point_time_offset_ms", 200.0);
     this->node->declare_parameter<bool>("preprocess.hilti_en", false);
   this->node->declare_parameter<double>("preprocess.filter_size_surf", 0.5);
   this->node->declare_parameter<int>("preprocess.lidar_type", AVIA);
@@ -157,7 +159,12 @@ void LIVMapper::readParameters(rclcpp::Node::SharedPtr &node)
   this->node->get_parameter("imu.gravity_est_en", gravity_est_en);
   this->node->get_parameter("imu.ba_bg_est_en", ba_bg_est_en);
 
-  this->node->get_parameter("preprocess.blind", p_pre->blind);
+  double preprocess_blind = 0.01;
+  double max_point_time_offset_ms = 200.0;
+  this->node->get_parameter("preprocess.blind", preprocess_blind);
+  p_pre->setBlind(preprocess_blind);
+  this->node->get_parameter("preprocess.max_point_time_offset_ms", max_point_time_offset_ms);
+  p_pre->setMaxPointTimeOffsetMs(max_point_time_offset_ms);
   this->node->get_parameter("preprocess.filter_size_surf", filter_size_surf_min);
   this->node->get_parameter("preprocess.lidar_type", p_pre->lidar_type);
   this->node->get_parameter("preprocess.scan_line", p_pre->N_SCANS);
@@ -799,23 +806,29 @@ void LIVMapper::RGBpointBodyLidarToIMU(PointType const *const pi, PointType *con
 void LIVMapper::standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg)
 {
   if (!lidar_en) return;
-  mtx_buffer.lock();
+  std::unique_lock<std::mutex> buffer_lock(mtx_buffer);
 
-  double cur_head_time = stamp2Sec(msg->header.stamp) + lidar_time_offset;
+  const double cur_head_time = stamp2Sec(msg->header.stamp) + lidar_time_offset;
   // cout<<"got feature"<<endl;
   if (cur_head_time < last_timestamp_lidar)
   {
     RCLCPP_ERROR(this->node->get_logger(),"lidar loop back, clear buffer");
-    lid_raw_data_buffer.clear();
+    fast_livo::clearPairedLidarBuffers(lid_raw_data_buffer, lid_header_time_buffer, lidar_pushed);
   }
   // ROS_INFO("get point cloud at time: %.6f", stamp2Sec(msg->header.stamp));
   PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
   p_pre->process(msg, ptr);
-  lid_raw_data_buffer.push_back(ptr);
-  lid_header_time_buffer.push_back(cur_head_time);
   last_timestamp_lidar = cur_head_time;
 
-  mtx_buffer.unlock();
+  if (!ptr || !fast_livo::hasEnoughPointsForLidarBuffer(ptr->size()))
+  {
+    return;
+  }
+
+  lid_raw_data_buffer.push_back(ptr);
+  lid_header_time_buffer.push_back(cur_head_time);
+
+  buffer_lock.unlock();
   sig_buffer.notify_all();
 }
 
@@ -843,7 +856,7 @@ void LIVMapper::livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::ConstShar
   if (cur_head_time < last_timestamp_lidar)
   {
     RCLCPP_ERROR(this->node->get_logger(), "lidar loop back, clear buffer");
-    lid_raw_data_buffer.clear();
+    fast_livo::clearPairedLidarBuffers(lid_raw_data_buffer, lid_header_time_buffer, lidar_pushed);
   }
   RCLCPP_INFO(this->node->get_logger(), "get point cloud at time: %.6f", stamp2Sec(msg->header.stamp));
   PointCloudXYZI::Ptr ptr(new PointCloudXYZI());

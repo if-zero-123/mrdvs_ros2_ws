@@ -180,6 +180,8 @@ public:
 #endif
   void process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
+  void setBlind(double blind_m);
+  void setMaxPointTimeOffsetMs(double max_offset_ms);
 
   // sensor_msgs::msg::PointCloud2::ConstSharedPtr pointcloud;
   PointCloudXYZI pl_full, pl_corn, pl_surf;
@@ -187,7 +189,7 @@ public:
   vector<orgtype> typess[128]; // maximum 128 line lidar
   int lidar_type, point_filter_num, N_SCANS;
   
-  double blind, blind_sqr;
+  double blind, blind_sqr, max_point_time_offset_ms;
   bool feature_enabled, given_offset_time;
   std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> pub_full;
   std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> pub_surf;
@@ -219,6 +221,15 @@ private:
   double edgea, edgeb;
   double smallp_intersect, smallp_ratio;
   double vx, vy, vz;
+
+  std::size_t mrdvs_frames_since_report_ = 0U;
+  std::size_t mrdvs_kept_points_ = 0U;
+  std::size_t mrdvs_non_finite_points_ = 0U;
+  std::size_t mrdvs_zero_or_near_points_ = 0U;
+  std::size_t mrdvs_non_finite_timestamps_ = 0U;
+  std::size_t mrdvs_unknown_unit_timestamps_ = 0U;
+  std::size_t mrdvs_negative_timestamps_ = 0U;
+  std::size_t mrdvs_too_large_timestamps_ = 0U;
 };
 typedef std::shared_ptr<Preprocess> PreprocessPtr;
 

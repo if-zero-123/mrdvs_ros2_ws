@@ -34,6 +34,7 @@
       lidar_type: 8
       scan_line: 1
       blind: 0.19
+      max_point_time_offset_ms: 200.0
       feature_extract_enabled: false
 
     vio:

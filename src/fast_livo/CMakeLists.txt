@@ -143,6 +143,7 @@ set(COMMON_DEPENDENCIES OpenMP::OpenMP_CXX fmt::fmt Sophus::Sophus Eigen3::Eigen
 add_library(vio src/vio.cpp src/frame.cpp src/visual_point.cpp)
 add_library(lio src/voxel_map.cpp)
 add_library(pre src/preprocess.cpp)
+target_compile_options(pre PRIVATE -fno-fast-math)
 add_library(imu_proc src/IMU_Processing.cpp)
 add_library(laser_mapping src/LIVMapper.cpp)
 add_library(utils src/utils.cpp)
@@ -206,6 +207,24 @@ if(BUILD_TESTING)
   )
   target_include_directories(test_mrdvs_time_utils PRIVATE
     include
+  )
+  target_compile_options(test_mrdvs_time_utils PRIVATE -fno-fast-math)
+
+  ament_add_gtest(test_mrdvs_preprocess
+    test/test_mrdvs_preprocess.cpp
+  )
+  target_include_directories(test_mrdvs_preprocess PRIVATE
+    include
+  )
+  target_compile_options(test_mrdvs_preprocess PRIVATE -fno-fast-math)
+  ament_target_dependencies(test_mrdvs_preprocess
+    rclcpp
+    sensor_msgs
+    pcl_conversions
+  )
+  target_link_libraries(test_mrdvs_preprocess
+    pre
+    ${PCL_LIBRARIES}
   )
 endif()
 

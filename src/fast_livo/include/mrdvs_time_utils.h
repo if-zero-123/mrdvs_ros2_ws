@@ -1,10 +1,71 @@
 #ifndef MRDVS_TIME_UTILS_H_
 #define MRDVS_TIME_UTILS_H_
 
+#include <algorithm>
 #include <cmath>
 
 namespace fast_livo
 {
+
+enum class MrdvsTimestampStatus
+{
+  kValid,
+  kNonFinite,
+  kUnknownUnit,
+  kNegative,
+  kTooLarge
+};
+
+struct MrdvsTimestampResult
+{
+  MrdvsTimestampStatus status;
+  double relative_ms;
+
+  bool valid() const { return status == MrdvsTimestampStatus::kValid; }
+};
+
+inline MrdvsTimestampResult parseMrdvsTimestamp(
+  double raw_timestamp,
+  double cloud_start_sec,
+  double max_offset_ms)
+{
+  if (!std::isfinite(raw_timestamp) || !std::isfinite(cloud_start_sec) || !std::isfinite(max_offset_ms))
+  {
+    return {MrdvsTimestampStatus::kNonFinite, 0.0};
+  }
+
+  if (raw_timestamp <= 0.0 || cloud_start_sec <= 0.0 || max_offset_ms <= 0.0)
+  {
+    return {MrdvsTimestampStatus::kUnknownUnit, 0.0};
+  }
+
+  const double cloud_start_us = cloud_start_sec * 1.0e6;
+  const double max_offset_us = max_offset_ms * 1.0e3;
+  if (!std::isfinite(cloud_start_us) || !std::isfinite(max_offset_us))
+  {
+    return {MrdvsTimestampStatus::kUnknownUnit, 0.0};
+  }
+
+  const double relative_us = raw_timestamp - cloud_start_us;
+  constexpr double kAbsoluteUsRecognitionWindow = 60.0e6;
+  const double recognition_window_us = std::max(kAbsoluteUsRecognitionWindow, max_offset_us);
+  if (!std::isfinite(relative_us) || std::fabs(relative_us) > recognition_window_us)
+  {
+    return {MrdvsTimestampStatus::kUnknownUnit, 0.0};
+  }
+
+  if (relative_us < 0.0)
+  {
+    return {MrdvsTimestampStatus::kNegative, 0.0};
+  }
+
+  if (relative_us > max_offset_us)
+  {
+    return {MrdvsTimestampStatus::kTooLarge, 0.0};
+  }
+
+  return {MrdvsTimestampStatus::kValid, relative_us / 1.0e3};
+}
 
 inline double mrdvsTimestampToRelativeMs(double raw_timestamp, double cloud_start_sec)
 {

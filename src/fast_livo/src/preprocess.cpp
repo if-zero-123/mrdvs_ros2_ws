@@ -11,13 +11,24 @@ which is included as part of this source code package.
 */
 
 #include "preprocess.h"
+#include "mrdvs_preprocess_utils.h"
 #include "mrdvs_time_utils.h"
+
+#include <stdexcept>
 
 #define RETURN0 0x00
 #define RETURN0AND1 0x10
 
-Preprocess::Preprocess() : feature_enabled(0), lidar_type(AVIA), blind(0.01), point_filter_num(1)
+Preprocess::Preprocess()
+  : lidar_type(AVIA),
+    point_filter_num(1),
+    blind(0.0),
+    blind_sqr(0.0),
+    max_point_time_offset_ms(0.0),
+    feature_enabled(false)
 {
+  setBlind(0.01);
+  setMaxPointTimeOffsetMs(200.0);
   inf_bound = 10;
   N_SCANS = 6;
   group_size = 8;
@@ -48,8 +59,24 @@ void Preprocess::set(bool feat_en, int lid_type, double bld, int pfilt_num)
 {
   feature_enabled = feat_en;
   lidar_type = lid_type;
-  blind = bld;
+  setBlind(bld);
   point_filter_num = pfilt_num;
+}
+
+void Preprocess::setBlind(double blind_m)
+{
+  blind = blind_m;
+  blind_sqr = blind * blind;
+}
+
+void Preprocess::setMaxPointTimeOffsetMs(double max_offset_ms)
+{
+  if (!std::isfinite(max_offset_ms) || max_offset_ms <= 0.0)
+  {
+    throw std::invalid_argument("max point time offset must be finite and positive");
+  }
+
+  max_point_time_offset_ms = max_offset_ms;
 }
 
 #ifdef FAST_LIVO_ENABLE_LIVOX
@@ -755,11 +782,11 @@ void Preprocess::robosense_handler(const sensor_msgs::msg::PointCloud2::ConstSha
 void Preprocess::mrdvs_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg)
 {
   pl_surf.clear();
+  ++mrdvs_frames_since_report_;
 
   pcl::PointCloud<mrdvs_ros::Point> pl_orig;
   pcl::fromROSMsg(*msg, pl_orig);
   const int plsize = pl_orig.size();
-  if (plsize == 0) return;
 
   pl_surf.reserve(plsize);
   const double cloud_start_sec = stamp2Sec(msg->header.stamp);
@@ -772,9 +799,43 @@ void Preprocess::mrdvs_handler(const sensor_msgs::msg::PointCloud2::ConstSharedP
     const double x = pt.x;
     const double y = pt.y;
     const double z = pt.z;
-    const double dist_sqr = x * x + y * y + z * z;
-    const bool is_valid = (dist_sqr >= blind_sqr) && std::isfinite(x) && std::isfinite(y) && std::isfinite(z);
-    if (!is_valid) continue;
+    const fast_livo::MrdvsPointStatus point_status = fast_livo::classifyMrdvsPoint(x, y, z, blind);
+    if (point_status != fast_livo::MrdvsPointStatus::kValid)
+    {
+      if (point_status == fast_livo::MrdvsPointStatus::kNonFinite)
+      {
+        ++mrdvs_non_finite_points_;
+      }
+      else
+      {
+        ++mrdvs_zero_or_near_points_;
+      }
+      continue;
+    }
+
+    const fast_livo::MrdvsTimestampResult timestamp =
+      fast_livo::parseMrdvsTimestamp(pt.timestamp, cloud_start_sec, max_point_time_offset_ms);
+    if (!timestamp.valid())
+    {
+      switch (timestamp.status)
+      {
+      case fast_livo::MrdvsTimestampStatus::kNonFinite:
+        ++mrdvs_non_finite_timestamps_;
+        break;
+      case fast_livo::MrdvsTimestampStatus::kUnknownUnit:
+        ++mrdvs_unknown_unit_timestamps_;
+        break;
+      case fast_livo::MrdvsTimestampStatus::kNegative:
+        ++mrdvs_negative_timestamps_;
+        break;
+      case fast_livo::MrdvsTimestampStatus::kTooLarge:
+        ++mrdvs_too_large_timestamps_;
+        break;
+      case fast_livo::MrdvsTimestampStatus::kValid:
+        break;
+      }
+      continue;
+    }
 
     PointType added_pt;
     added_pt.normal_x = 0;
@@ -784,13 +845,40 @@ void Preprocess::mrdvs_handler(const sensor_msgs::msg::PointCloud2::ConstSharedP
     added_pt.y = pt.y;
     added_pt.z = pt.z;
     added_pt.intensity = static_cast<float>(pt.intensity);
-    added_pt.curvature = fast_livo::mrdvsTimestampToRelativeMs(pt.timestamp, cloud_start_sec);
+    added_pt.curvature = timestamp.relative_ms;
     pl_surf.points.push_back(added_pt);
+    ++mrdvs_kept_points_;
   }
 
   std::sort(pl_surf.points.begin(), pl_surf.points.end(), [](const PointType &a, const PointType &b) {
     return a.curvature < b.curvature;
   });
+
+  if (mrdvs_frames_since_report_ >= 100U)
+  {
+    RCLCPP_INFO(
+      rclcpp::get_logger("fast_livo.preprocess"),
+      "MRDVS preprocess stats (%zu frames): kept=%zu, drop_nonfinite_xyz=%zu, "
+      "drop_zero_near=%zu, drop_time_nonfinite=%zu, drop_time_unknown_unit=%zu, "
+      "drop_time_negative=%zu, drop_time_too_large=%zu",
+      mrdvs_frames_since_report_,
+      mrdvs_kept_points_,
+      mrdvs_non_finite_points_,
+      mrdvs_zero_or_near_points_,
+      mrdvs_non_finite_timestamps_,
+      mrdvs_unknown_unit_timestamps_,
+      mrdvs_negative_timestamps_,
+      mrdvs_too_large_timestamps_);
+
+    mrdvs_frames_since_report_ = 0U;
+    mrdvs_kept_points_ = 0U;
+    mrdvs_non_finite_points_ = 0U;
+    mrdvs_zero_or_near_points_ = 0U;
+    mrdvs_non_finite_timestamps_ = 0U;
+    mrdvs_unknown_unit_timestamps_ = 0U;
+    mrdvs_negative_timestamps_ = 0U;
+    mrdvs_too_large_timestamps_ = 0U;
+  }
 }
 
 void Preprocess::give_feature(pcl::PointCloud<PointType> &pl, vector<orgtype> &types)
