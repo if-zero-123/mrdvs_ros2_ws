@@ -1,6 +1,8 @@
 #include "pgo_outputs.h"
 
 #include <Eigen/Geometry>
+#include <pcl/common/transforms.h>
+#include <pcl/filters/voxel_grid.h>
 
 namespace pgo_outputs
 {
@@ -21,6 +23,50 @@ geometry_msgs::msg::Pose makePose(const M3D &rotation, const V3D &translation)
     return pose;
 }
 }  // namespace
+
+OptimizedMapAssembler::OptimizedMapAssembler()
+    : map_(new CloudType)
+{
+}
+
+CloudType::ConstPtr OptimizedMapAssembler::update(
+    const std::vector<KeyPoseWithCloud> &key_poses,
+    bool rebuild,
+    double resolution)
+{
+    if (rebuild || key_poses.size() < assembled_key_pose_count_)
+    {
+        map_->clear();
+        assembled_key_pose_count_ = 0;
+    }
+
+    for (std::size_t i = assembled_key_pose_count_; i < key_poses.size(); ++i)
+    {
+        const KeyPoseWithCloud &key_pose = key_poses[i];
+        if (!key_pose.body_cloud || key_pose.body_cloud->empty())
+            continue;
+
+        CloudType transformed_cloud;
+        pcl::transformPointCloud(
+            *key_pose.body_cloud,
+            transformed_cloud,
+            key_pose.t_global,
+            Eigen::Quaterniond(key_pose.r_global));
+        *map_ += transformed_cloud;
+    }
+    assembled_key_pose_count_ = key_poses.size();
+
+    if (resolution > 0.0 && !map_->empty())
+    {
+        pcl::VoxelGrid<PointType> voxel_grid;
+        voxel_grid.setLeafSize(resolution, resolution, resolution);
+        voxel_grid.setInputCloud(map_);
+        CloudType filtered_map;
+        voxel_grid.filter(filtered_map);
+        map_->swap(filtered_map);
+    }
+    return map_;
+}
 
 nav_msgs::msg::Odometry makeOptimizedOdometry(
     const nav_msgs::msg::Odometry &local_odom,

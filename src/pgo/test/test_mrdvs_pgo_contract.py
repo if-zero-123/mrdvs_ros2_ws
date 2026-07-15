@@ -60,6 +60,8 @@ def test_mrdvs_pgo_configuration_matches_the_online_loop_contract():
         'loop_submap_half_range': 5,
         'submap_resolution': 0.1,
         'min_loop_detect_duration': 5.0,
+        'optimized_map_resolution': 0.1,
+        'optimized_map_publish_period': 1.0,
     }
 
 
@@ -111,3 +113,11 @@ def test_pgo_publishes_corrected_pose_and_path_topics():
         '/pgo/optimized_path',
     ):
         assert topic in source
+
+
+def test_pgo_publishes_a_rate_limited_optimized_map():
+    source = (WORKSPACE_ROOT / 'src/pgo/src/pgo_node.cpp').read_text()
+
+    assert '/pgo/optimized_map' in source
+    assert 'optimized_map_resolution' in source
+    assert 'optimized_map_publish_period' in source

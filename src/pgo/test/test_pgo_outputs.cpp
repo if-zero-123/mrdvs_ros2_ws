@@ -64,4 +64,70 @@ TEST(PgoOutputs, BuildsPathFromEveryOptimizedKeyPose)
     EXPECT_NEAR(std::abs(path.poses[1].pose.orientation.x), 1.0, kTolerance);
     EXPECT_NEAR(path.poses[1].pose.orientation.w, 0.0, kTolerance);
 }
+
+KeyPoseWithCloud makeKeyPoseWithOnePoint(double pose_x, float point_x)
+{
+    KeyPoseWithCloud key_pose;
+    key_pose.r_global.setIdentity();
+    key_pose.t_global = V3D(pose_x, 0.0, 0.0);
+    key_pose.body_cloud = CloudType::Ptr(new CloudType);
+    PointType point;
+    point.x = point_x;
+    point.y = 0.0F;
+    point.z = 0.0F;
+    point.intensity = 1.0F;
+    key_pose.body_cloud->push_back(point);
+    return key_pose;
+}
+
+TEST(PgoOutputs, IncrementalMapOnlyAppendsNewKeyPoses)
+{
+    pgo_outputs::OptimizedMapAssembler assembler;
+    std::vector<KeyPoseWithCloud> key_poses;
+    key_poses.push_back(makeKeyPoseWithOnePoint(1.0, 0.0F));
+
+    auto map = assembler.update(key_poses, false, 0.0);
+    ASSERT_EQ(map->size(), 1U);
+    EXPECT_NEAR(map->points[0].x, 1.0, kTolerance);
+
+    key_poses.push_back(makeKeyPoseWithOnePoint(2.0, 0.0F));
+    map = assembler.update(key_poses, false, 0.0);
+    ASSERT_EQ(map->size(), 2U);
+    EXPECT_NEAR(map->points[0].x, 1.0, kTolerance);
+    EXPECT_NEAR(map->points[1].x, 2.0, kTolerance);
+}
+
+TEST(PgoOutputs, LoopCorrectionRebuildsEveryHistoricalKeyPose)
+{
+    pgo_outputs::OptimizedMapAssembler assembler;
+    std::vector<KeyPoseWithCloud> key_poses;
+    key_poses.push_back(makeKeyPoseWithOnePoint(1.0, 0.0F));
+    key_poses.push_back(makeKeyPoseWithOnePoint(2.0, 0.0F));
+    assembler.update(key_poses, false, 0.0);
+
+    key_poses[0].t_global.x() = 10.0;
+    key_poses[1].t_global.x() = 20.0;
+    const auto rebuilt_map = assembler.update(key_poses, true, 0.0);
+
+    ASSERT_EQ(rebuilt_map->size(), 2U);
+    EXPECT_NEAR(rebuilt_map->points[0].x, 10.0, kTolerance);
+    EXPECT_NEAR(rebuilt_map->points[1].x, 20.0, kTolerance);
+}
+
+TEST(PgoOutputs, MapResolutionDownsamplesPointsInTheSameVoxel)
+{
+    pgo_outputs::OptimizedMapAssembler assembler;
+    std::vector<KeyPoseWithCloud> key_poses;
+    key_poses.push_back(makeKeyPoseWithOnePoint(0.0, 0.05F));
+    PointType nearby_point;
+    nearby_point.x = 0.1F;
+    nearby_point.y = 0.0F;
+    nearby_point.z = 0.0F;
+    nearby_point.intensity = 1.0F;
+    key_poses[0].body_cloud->push_back(nearby_point);
+
+    const auto filtered_map = assembler.update(key_poses, false, 0.5);
+
+    EXPECT_EQ(filtered_map->size(), 1U);
+}
 }  // namespace

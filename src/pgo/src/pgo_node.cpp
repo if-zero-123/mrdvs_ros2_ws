@@ -29,6 +29,8 @@ struct NodeConfig
     std::string odom_topic = "/lio/odom";
     std::string map_frame = "map";
     std::string local_frame = "lidar";
+    double optimized_map_resolution = 0.1;
+    double optimized_map_publish_period = 1.0;
 };
 
 struct NodeState
@@ -42,6 +44,8 @@ struct NodeState
     std::mutex message_mutex;
     std::queue<SyncedFrame> frame_buffer;
     double last_message_time = 0.0;
+    double last_map_publish_time = -1.0;
+    bool optimized_map_rebuild_pending = false;
 };
 
 class PGONode : public rclcpp::Node
@@ -59,6 +63,7 @@ public:
         m_optimized_odom_pub = this->create_publisher<nav_msgs::msg::Odometry>("/pgo/optimized_odom", 10);
         const auto latched_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
         m_optimized_path_pub = this->create_publisher<nav_msgs::msg::Path>("/pgo/optimized_path", latched_qos);
+        m_optimized_map_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/pgo/optimized_map", latched_qos);
         m_tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
         m_sync = std::make_shared<message_filters::Synchronizer<message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::PointCloud2, nav_msgs::msg::Odometry>>>(message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::PointCloud2, nav_msgs::msg::Odometry>(10), m_cloud_sub, m_odom_sub);
         m_sync->setAgePenalty(0.1);
@@ -83,6 +88,18 @@ public:
         m_node_config.odom_topic = config["odom_topic"].as<std::string>();
         m_node_config.map_frame = config["map_frame"].as<std::string>();
         m_node_config.local_frame = config["local_frame"].as<std::string>();
+        m_node_config.optimized_map_resolution = config["optimized_map_resolution"] ? config["optimized_map_resolution"].as<double>() : 0.1;
+        m_node_config.optimized_map_publish_period = config["optimized_map_publish_period"] ? config["optimized_map_publish_period"].as<double>() : 1.0;
+        if (m_node_config.optimized_map_resolution < 0.0)
+        {
+            RCLCPP_WARN(this->get_logger(), "optimized_map_resolution cannot be negative; disabling voxel filtering");
+            m_node_config.optimized_map_resolution = 0.0;
+        }
+        if (m_node_config.optimized_map_publish_period < 0.0)
+        {
+            RCLCPP_WARN(this->get_logger(), "optimized_map_publish_period cannot be negative; publishing every key pose");
+            m_node_config.optimized_map_publish_period = 0.0;
+        }
 
         m_pgo_config.key_pose_delta_deg = config["key_pose_delta_deg"].as<double>();
         m_pgo_config.key_pose_delta_trans = config["key_pose_delta_trans"].as<double>();
@@ -220,6 +237,36 @@ public:
             m_pgo->keyPoses(), m_node_config.map_frame, time));
     }
 
+    void publishOptimizedMap(
+        const builtin_interfaces::msg::Time &time,
+        double current_time,
+        bool loop_detected)
+    {
+        if (loop_detected)
+            m_state.optimized_map_rebuild_pending = true;
+        if (m_optimized_map_pub->get_subscription_count() == 0)
+            return;
+
+        const bool rebuild = m_state.optimized_map_rebuild_pending;
+        const CloudType::ConstPtr optimized_map = m_optimized_map_assembler.update(
+            m_pgo->keyPoses(), rebuild, m_node_config.optimized_map_resolution);
+        m_state.optimized_map_rebuild_pending = false;
+
+        const bool publish_period_elapsed =
+            m_state.last_map_publish_time < 0.0 ||
+            m_node_config.optimized_map_publish_period <= 0.0 ||
+            current_time - m_state.last_map_publish_time >= m_node_config.optimized_map_publish_period;
+        if (!rebuild && !publish_period_elapsed)
+            return;
+
+        sensor_msgs::msg::PointCloud2 map_msg;
+        pcl::toROSMsg(*optimized_map, map_msg);
+        map_msg.header.frame_id = m_node_config.map_frame;
+        map_msg.header.stamp = time;
+        m_optimized_map_pub->publish(map_msg);
+        m_state.last_map_publish_time = current_time;
+    }
+
     void timerCB()
     {
         NodeState::SyncedFrame frame;
@@ -247,11 +294,14 @@ public:
 
         m_pgo->searchForLoopPairs();
 
+        const bool loop_detected = m_pgo->hasLoop();
+
         m_pgo->smoothAndUpdate();
 
         sendBroadCastTF(cur_time);
         publishOptimizedOdometry(frame.odom);
         publishOptimizedPath(cur_time);
+        publishOptimizedMap(cur_time, cp.pose.second, loop_detected);
 
         publishLoopMarkers(cur_time);
     }
@@ -329,10 +379,12 @@ private:
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr m_loop_marker_pub;
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr m_optimized_odom_pub;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr m_optimized_path_pub;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_optimized_map_pub;
     rclcpp::Service<interface::srv::SaveMaps>::SharedPtr m_save_map_srv;
     message_filters::Subscriber<sensor_msgs::msg::PointCloud2> m_cloud_sub;
     message_filters::Subscriber<nav_msgs::msg::Odometry> m_odom_sub;
     std::shared_ptr<tf2_ros::TransformBroadcaster> m_tf_broadcaster;
+    pgo_outputs::OptimizedMapAssembler m_optimized_map_assembler;
     std::shared_ptr<message_filters::Synchronizer<message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::PointCloud2, nav_msgs::msg::Odometry>>> m_sync;
 };
 

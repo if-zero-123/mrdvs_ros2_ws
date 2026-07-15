@@ -11,6 +11,21 @@
 
 namespace pgo_outputs
 {
+class OptimizedMapAssembler
+{
+public:
+    OptimizedMapAssembler();
+
+    CloudType::ConstPtr update(
+        const std::vector<KeyPoseWithCloud> &key_poses,
+        bool rebuild,
+        double resolution);
+
+private:
+    CloudType::Ptr map_;
+    std::size_t assembled_key_pose_count_ = 0;
+};
+
 nav_msgs::msg::Odometry makeOptimizedOdometry(
     const nav_msgs::msg::Odometry &local_odom,
     const std::string &map_frame,
