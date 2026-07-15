@@ -1,6 +1,7 @@
 import ast
 import importlib.util
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 from launch import LaunchContext
 from launch.actions import DeclareLaunchArgument
@@ -28,6 +29,15 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
 def test_upstream_pgo_package_layout_is_present(relative_path):
     path = WORKSPACE_ROOT / relative_path
     assert path.is_file(), f'missing upstream PGO file: {relative_path}'
+
+
+def test_pgo_declares_the_gtest_build_dependency():
+    package_root = ET.parse(WORKSPACE_ROOT / 'src/pgo/package.xml').getroot()
+    test_dependencies = {
+        dependency.text for dependency in package_root.findall('test_depend')
+    }
+
+    assert 'ament_cmake_gtest' in test_dependencies
 
 
 def load_workspace_yaml(relative_path):
