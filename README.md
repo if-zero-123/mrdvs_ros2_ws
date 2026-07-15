@@ -11,14 +11,17 @@
 - 相机 SDK 头文件和动态库默认来自 `/opt/MRDVS/include` 与 `/opt/MRDVS/lib`。
 - `launch/` 提供相机、雷达、障碍物、托盘、定位、建图、传感器仿真等启动入口。
 - 根目录脚本提供常用构建和话题查看命令。
-- `fastlio2` 来自 `liangheming/FASTLIO2_ROS2` 的主里程计包，本工作空间只接入里程计，不接入 PGO、HBA、localizer 等额外模块。
+- `fastlio2` 来自 `liangheming/FASTLIO2_ROS2` 的主里程计包；回环作为独立 `pgo` 包接入，本工作空间仍不接入 HBA、localizer 等其他额外模块。
 - `fastlio2` 已从 Livox `CustomMsg` 适配为标准 `sensor_msgs/msg/PointCloud2` 输入，读取 MRDVS LiDAR 模式下的 `x/y/z/intensity/timestamp` 字段，并把点时间换算为 FAST-LIO2 去畸变所需的帧内相对毫秒。
 - MRDVS IMU SDK 输出单位已经是 `m/s^2` 和 `rad/s`，因此 `fastlio2` 中不再对线加速度额外乘以 10。
+- `pgo` 与 `interface` 来自同一上游仓库的提交 `f516daa`；PGO 同步 FAST-LIO2 的机体系点云和局部里程计，沿用位置候选、ICP、GTSAM/iSAM2 流程，通过 `map -> lio_local` 在线修正全局位姿，并提供优化地图保存服务。
 
 ## 代码结构
 
 - `src/lx_camera_ros/`：ROS2 功能包源码。
 - `src/fastlio2/`：FAST-LIO2 ROS2 主里程计包，已适配 MRDVS 的 `PointCloud2` 和 `Imu` 话题。
+- `src/interface/`：上游 FAST-LIO2 扩展模块使用的 ROS2 服务接口，本工作空间的 PGO 使用 `SaveMaps`。
+- `src/pgo/`：FAST-LIO2 在线回环和位姿图优化包，包含 MRDVS 配置、独立一体启动、RViz 和契约测试。
 - `src/fast_livo/`：FAST-LIVO2 ROS2 Humble 移植版，当前分支已做 MRDVS 初始适配。
 - `src/fast_livo/scripts/mrdvs_imu_diagnostics.py`：实时采集 MRDVS IMU，统计频率、重复/回退时间戳、静止阈值和初始化进度，并输出 JSON、CSV 与 PNG 图表。
 - `src/rpg_vikit/`：FAST-LIVO2 使用的 ROS2 vikit 相机模型和视觉工具库。
@@ -248,6 +251,78 @@ t_il: [0.014569, -0.002738, 0.022567]
 | `gyr_w` | `4.2000451972629459e-05` | `rad/s` | `nbg` | `b_gyr_cov` |
 
 这些值已同步写入 FAST-LIO2 的 `src/fastlio2/config/mrdvs.yaml`、`src/fastlio2/config/mrdvs_refined.yaml`、`src/fastlio2/config/mrdvs_lidar_imu_init.yaml`，以及 FAST-LIVO2 的 `src/fast_livo/config/mrdvs.yaml`、`src/fast_livo/config/mrdvs_lidar_imu_init.yaml`。FAST-LIVO2 源码也已改为读取 `b_acc_cov`、`b_gyr_cov` 配置项，不再使用写死的默认值。
+
+### 运行 MRDVS + FAST-LIO2 在线回环
+
+在线回环沿用 `liangheming/FASTLIO2_ROS2` 的 PGO：先按位置和时间搜索历史关键帧，再用 ICP 确认回环，最后由 GTSAM/iSAM2 优化关键帧位姿。PGO 不修改 FAST-LIO2 的局部滤波状态，而是维护以下 TF：
+
+```text
+map -> lio_local -> mrdvs_imu -> mrdvs_tof
+```
+
+- `map -> lio_local`：PGO 发布，检测到回环后更新全局修正。
+- `lio_local -> mrdvs_imu`：FAST-LIO2 发布，保持局部里程计连续。
+- `mrdvs_imu -> mrdvs_tof`：现有 FAST-LIO2 launch 发布厂家结构外参。
+
+安装 GTSAM 依赖：
+
+```bash
+sudo apt install libgtsam-dev
+```
+
+Ubuntu 24.04 的 `libgtsam-dev 4.2.0` 导出文件会引用未随包发布的 `libCppUnitLite.a`；当前 `pgo/CMakeLists.txt` 已绕过损坏的测试库导出，直接使用系统安装的 GTSAM 头文件、共享库和 TBB，不需要手动创建假库或修改 `/usr/lib`。
+
+按当前工作空间兼容方式构建。`lx_camera_ros` 使用普通安装模式，其他三个包使用 symlink install：
+
+```bash
+colcon build --packages-select lx_camera_ros \
+  --cmake-clean-cache --cmake-args -DBUILD_TESTING=ON
+colcon build --packages-select interface fastlio2 pgo \
+  --symlink-install --cmake-args -DBUILD_TESTING=ON
+source install/setup.bash
+```
+
+启动 MRDVS、FAST-LIO2、PGO 和 PGO RViz：
+
+```bash
+source install/setup.bash
+ros2 launch pgo mrdvs_pgo_full_launch.py \
+  camera_ip:=192.168.100.82 \
+  fastlio_delay:=3.0 \
+  enable_rviz:=true
+```
+
+不需要 RViz 时使用：
+
+```bash
+ros2 launch pgo mrdvs_pgo_full_launch.py enable_rviz:=false
+```
+
+该入口固定让 FAST-LIO2 加载 `mrdvs_pgo.yaml`，让 PGO 加载 `pgo/config/mrdvs.yaml`；现有无回环入口 `ros2 launch fastlio2 mrdvs_full_launch.py` 不受影响。不要同时启动 FAST-LIVO2，一台 MRDVS 设备不应被两条 SLAM 链路同时占用，也应避免重复发布 TF。
+
+启动后可检查输入和全局修正：
+
+```bash
+ros2 topic hz /fastlio2/body_cloud
+ros2 topic hz /fastlio2/lio_odom
+ros2 run tf2_ros tf2_echo map lio_local
+ros2 topic echo /pgo/loop_markers
+```
+
+默认配置每平移 `0.5m` 或旋转 `10deg` 生成关键帧；回环候选需要与当前优化位置相距不超过 `1.0m`，并与当前帧相隔超过 `60s`，ICP fitness score 需要不高于 `0.15`。实测时先静止完成 FAST-LIO2 初始化，再沿闭合路线运行超过 60 秒并回到起点；RViz 中出现 `/pgo/loop_markers` 连线、`map -> lio_local` 从单位变换变为有限修正，表示回环已被接受。未取得闭合路线实测证据前，不要盲目放宽搜索半径或 ICP 阈值。
+
+保存按优化后关键帧拼接的地图时，输出目录必须预先存在：
+
+```bash
+OUTPUT_DIR=~/maps/mrdvs_pgo_$(date +%Y%m%d_%H%M%S)
+mkdir -p "$OUTPUT_DIR"
+ros2 service call /pgo/save_maps interface/srv/SaveMaps \
+  "{file_path: '$OUTPUT_DIR', save_patches: true}"
+```
+
+输出包括 `map.pcd`、`poses.txt` 和 `patches/*.pcd`。这些是运行产物，不提交到 Git。上游首轮 PGO 在线更新全局 TF 和内部关键帧，但不会在每次回环后持续重新发布整张优化历史地图；完整优化地图在调用保存服务时生成。
+
+当前已验证真实设备可以启动 4 个目标节点，`/fastlio2/body_cloud` 与 `/fastlio2/lio_odom` 均约为 `10Hz`，三段 TF 可查询，静止首关键帧可成功保存地图。尚未执行超过 60 秒的真实闭合路线，因此还未验证 MRDVS 场景中的回环检出率、误检率和优化后的闭环误差。另有一个与 PGO 无关的既有驱动问题：`lx_lidar_ros.launch.py` 单独运行时，Ctrl+C 也会在 MRDVS 驱动关闭阶段触发 ROS guard-condition 异常并以 `-6` 退出；进程不会残留，设备可以重新连接。
 
 ### 读取 SDK IMU 外参
 
@@ -837,11 +912,11 @@ tools/analyze_mrdvs_bag.py /home/zero/bag/mrdvs_livo_debug_20260708_155719 --max
 
 - [x] 先创建契约测试，断言 `src/interface/srv/SaveMaps.srv`、`src/pgo/src/pgo_node.cpp`、`src/pgo/src/pgos/simple_pgo.cpp` 和两个 `package.xml` 存在；运行 `python3 -m pytest -q src/pgo/test/test_mrdvs_pgo_contract.py`，确认因文件尚未导入而失败。
 - [x] 从上游提交 `f516daac08bc46e50e814a2e7d6c8352ed8141bb` 导入 `interface/` 和 `pgo/`，不导入上游 FAST-LIO2、localizer 或 HBA，也不覆盖当前 MRDVS FAST-LIO2。
-- [x] 重跑契约测试，确认上游包布局通过，并用 `git diff --no-index` 核对首轮导入的 PGO 核心文件与上游一致。
+- [x] 重跑契约测试，确认上游包布局通过，并用 `git diff --no-index` 核对首轮导入的 `SimplePGO` 算法核心与上游一致。
 - [x] 安装 `libgtsam-dev`，运行 `colcon build --packages-select interface pgo --symlink-install --cmake-args -DBUILD_TESTING=ON`，只修复 Jazzy/Noble 的构建兼容问题，不改变算法行为。
 - [x] 提交 `feat: import upstream FAST-LIO2 PGO`。
 
-阶段一在 Ubuntu 24.04 上安装了 `libgtsam-dev 4.2.0+dfsg-1build1`。该包的 `GTSAMConfig.cmake` 引用了未随 Debian 包发布的 `libCppUnitLite.a`，因此 PGO CMake 改为直接查找已安装的 GTSAM 头文件和 `libgtsam.so` 并显式链接 TBB；独立编译链接探针和最终 `pgo_node` 动态库检查均通过。`pgo_node.cpp`、`simple_pgo.cpp`、`simple_pgo.h` 与上游固定提交保持一致。
+阶段一在 Ubuntu 24.04 上安装了 `libgtsam-dev 4.2.0+dfsg-1build1`。该包的 `GTSAMConfig.cmake` 引用了未随 Debian 包发布的 `libCppUnitLite.a`，因此 PGO CMake 改为直接查找已安装的 GTSAM 头文件和 `libgtsam.so` 并显式链接 TBB；独立编译链接探针和最终 `pgo_node` 动态库检查均通过。`simple_pgo.cpp`、`simple_pgo.h` 与上游固定提交保持一致；包装节点只为原本未初始化的 `last_message_time` 增加确定的 `0.0` 初值，避免首组同步消息读取未定义值。
 
 #### 阶段二：用测试驱动 MRDVS 配置和 TF 契约
 
@@ -902,12 +977,12 @@ ros2 launch pgo mrdvs_pgo_full_launch.py \
 
 #### 阶段四：集成验证、使用说明和硬件验收
 
-- [ ] 构建 `lx_camera_ros`、`interface`、`fastlio2`、`pgo`，运行这些包的全部测试并用 `colcon test-result --verbose` 确认无失败。
-- [ ] 启动后检查 `/fastlio2/body_cloud`、`/fastlio2/lio_odom` 的频率和时间戳同步，检查 TF 只有 `map -> lio_local -> mrdvs_imu -> mrdvs_tof` 一条父子链。
+- [x] 构建 `lx_camera_ros`、`interface`、`fastlio2`、`pgo`，运行这些包的全部测试并用 `colcon test-result --verbose` 确认无失败。
+- [x] 启动后检查 `/fastlio2/body_cloud`、`/fastlio2/lio_odom` 的频率和时间戳同步，检查 TF 只有 `map -> lio_local -> mrdvs_imu -> mrdvs_tof` 一条父子链。
 - [ ] 真实设备静止初始化后沿闭合路线运行超过 60 秒并回到起点，确认 `/pgo/loop_markers` 出现回环边、`map -> lio_local` 发生有限修正且节点不退出。
-- [ ] 调用 `ros2 service call /pgo/save_maps interface/srv/SaveMaps "{file_path: '/tmp/mrdvs_pgo_map', save_patches: true}"`，确认生成 `map.pcd`、`poses.txt` 和 `patches/`；这些运行产物不提交。
-- [ ] 只有在上游默认阈值实测漏检或误检时才调整 `loop_search_radius`、`loop_score_tresh` 或 `submap_resolution`，并记录调整证据。
-- [ ] 在本 README 补充启动、保存地图、回环观察、已验证范围和未完成硬件风险，提交 `docs: document MRDVS online PGO workflow`。
+- [x] 调用 `ros2 service call /pgo/save_maps interface/srv/SaveMaps "{file_path: '/tmp/mrdvs_pgo_map', save_patches: true}"`，确认生成 `map.pcd`、`poses.txt` 和 `patches/`；这些运行产物不提交。
+- [x] 只有在上游默认阈值实测漏检或误检时才调整 `loop_search_radius`、`loop_score_tresh` 或 `submap_resolution`，并记录调整证据；本轮没有闭合路线证据，因此保留上游默认值。
+- [x] 在本 README 补充启动、保存地图、回环观察、已验证范围和未完成硬件风险，提交 `docs: document MRDVS online PGO workflow`。
 
 ## Codex 工作规则
 
@@ -915,6 +990,7 @@ ros2 launch pgo mrdvs_pgo_full_launch.py \
 
 ## 更新记录
 
+- 2026-07-15：从 `liangheming/FASTLIO2_ROS2@f516daa` 接入 `interface` 和在线 PGO，新增 MRDVS 回环专用 `lio_local` 配置和一体启动；真实设备已验证约 `10Hz` 点云/里程计、`map -> lio_local -> mrdvs_imu -> mrdvs_tof` TF 与优化地图保存，超过 60 秒的闭合路线回环验收仍待执行。
 - 2026-07-15：使用最新 `imu_utils` Allan 标定结果更新 MRDVS IMU 噪声参数；FAST-LIO2 和 FAST-LIVO2 共 5 个 MRDVS 配置统一采用 `avg-axis` 的 `acc_n=2.0331770033767380e-02`、`gyr_n=3.0946620647727048e-03`、`acc_w=5.4152704615929208e-04`、`gyr_w=4.2000451972629459e-05`。
 - 2026-07-10：新增 MRDVS IMU 实时诊断程序，可输出 JSON 汇总、逐样本 CSV 和 PNG 图表；具体实测报告单独归档，不写入项目 README。
 - 2026-07-10：完成 FAST-LIVO2 手持稳定性三个代码阶段和 x86_64 软件集成验证：驱动关键模式设置/读回、MRDVS 点与 absolute-us 时间过滤、连续静止 IMU 初始化及 gyro bias 初值均已落地，构建与测试无失败，指定 bag 的抽样点时间跨度低于 `200ms`；真实 MRDVS 快速手持和 RK3588 ARM 原生验收仍未完成。
