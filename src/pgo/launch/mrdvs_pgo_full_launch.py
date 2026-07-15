@@ -62,12 +62,17 @@ def generate_launch_description():
             TimerAction(
                 period=fastlio_delay,
                 actions=[
-                    IncludeLaunchDescription(
-                        PythonLaunchDescriptionSource(fastlio_launch),
-                        launch_arguments={
-                            'enable_rviz': 'false',
-                            'config_file': 'mrdvs_pgo.yaml',
-                        }.items(),
+                    GroupAction(
+                        scoped=True,
+                        actions=[
+                            IncludeLaunchDescription(
+                                PythonLaunchDescriptionSource(fastlio_launch),
+                                launch_arguments={
+                                    'enable_rviz': 'false',
+                                    'config_file': 'mrdvs_pgo.yaml',
+                                }.items(),
+                            ),
+                        ],
                     ),
                     Node(
                         package='pgo',

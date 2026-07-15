@@ -1,3 +1,4 @@
+import ast
 import importlib.util
 from pathlib import Path
 
@@ -99,6 +100,35 @@ def test_mrdvs_pgo_full_launch_exposes_the_isolated_pipeline_contract():
         'camera_ip': '192.168.100.82',
         'fastlio_delay': '3.0',
     }
+
+
+def test_pgo_full_launch_isolates_fastlio_child_launch_arguments():
+    path = WORKSPACE_ROOT / 'src/pgo/launch/mrdvs_pgo_full_launch.py'
+    tree = ast.parse(path.read_text())
+    timer_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == 'TimerAction'
+    ]
+    assert len(timer_calls) == 1
+
+    actions_keyword = next(
+        keyword
+        for keyword in timer_calls[0].keywords
+        if keyword.arg == 'actions'
+    )
+    assert isinstance(actions_keyword.value, ast.List)
+    first_action = actions_keyword.value.elts[0]
+    assert isinstance(first_action, ast.Call)
+    assert isinstance(first_action.func, ast.Name)
+    assert first_action.func.id == 'GroupAction'
+    scoped_keyword = next(
+        keyword for keyword in first_action.keywords if keyword.arg == 'scoped'
+    )
+    assert isinstance(scoped_keyword.value, ast.Constant)
+    assert scoped_keyword.value.value is True
 
 
 def test_pgo_message_time_guard_has_a_deterministic_initial_value():
