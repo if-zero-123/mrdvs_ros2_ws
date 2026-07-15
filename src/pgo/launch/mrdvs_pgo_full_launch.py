@@ -27,7 +27,7 @@ def generate_launch_description():
         [FindPackageShare('pgo'), 'config', 'mrdvs.yaml']
     )
     pgo_rviz = PathJoinSubstitution(
-        [FindPackageShare('pgo'), 'rviz', 'pgo.rviz']
+        [FindPackageShare('pgo'), 'rviz', 'mrdvs_pgo_optimized.rviz']
     )
 
     return launch.LaunchDescription(

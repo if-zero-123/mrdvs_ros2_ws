@@ -79,6 +79,7 @@ def test_mrdvs_pgo_full_launch_exposes_the_isolated_pipeline_contract():
         "'mrdvs.yaml'",
         "package='pgo'",
         "package='rviz2'",
+        "'mrdvs_pgo_optimized.rviz'",
     ):
         assert required_token in source
     assert 'fast_livo' not in source
@@ -121,3 +122,35 @@ def test_pgo_publishes_a_rate_limited_optimized_map():
     assert '/pgo/optimized_map' in source
     assert 'optimized_map_resolution' in source
     assert 'optimized_map_publish_period' in source
+
+
+def test_optimized_pgo_rviz_shows_live_scan_and_corrected_outputs():
+    rviz_path = WORKSPACE_ROOT / 'src/pgo/rviz/mrdvs_pgo_optimized.rviz'
+    assert rviz_path.is_file()
+    source = rviz_path.read_text()
+
+    for required_topic in (
+        '/fastlio2/body_cloud',
+        '/pgo/optimized_odom',
+        '/pgo/optimized_path',
+        '/pgo/optimized_map',
+        '/pgo/loop_markers',
+    ):
+        assert required_topic in source
+
+    assert 'Class: rviz_default_plugins/Odometry' in source
+    assert 'Fixed Frame: map' in source
+    assert 'Reference Frame: mrdvs_imu' in source
+    assert '/fastlio2/world_cloud' not in source
+    assert '/fastlio2/lio_path' not in source
+
+
+def test_readme_documents_the_corrected_pgo_visualization_topics():
+    source = (WORKSPACE_ROOT / 'README.md').read_text()
+
+    for topic in (
+        '/pgo/optimized_odom',
+        '/pgo/optimized_path',
+        '/pgo/optimized_map',
+    ):
+        assert topic in source
