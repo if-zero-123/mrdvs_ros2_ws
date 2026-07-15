@@ -19,6 +19,8 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
         'src/pgo/package.xml',
         'src/pgo/LICENSE',
         'src/pgo/src/pgo_node.cpp',
+        'src/pgo/src/pgo_outputs.cpp',
+        'src/pgo/src/pgo_outputs.h',
         'src/pgo/src/pgos/simple_pgo.cpp',
     ],
 )
@@ -99,3 +101,13 @@ def test_mrdvs_pgo_full_launch_exposes_the_isolated_pipeline_contract():
 def test_pgo_message_time_guard_has_a_deterministic_initial_value():
     source = (WORKSPACE_ROOT / 'src/pgo/src/pgo_node.cpp').read_text()
     assert 'double last_message_time = 0.0;' in source
+
+
+def test_pgo_publishes_corrected_pose_and_path_topics():
+    source = (WORKSPACE_ROOT / 'src/pgo/src/pgo_node.cpp').read_text()
+
+    for topic in (
+        '/pgo/optimized_odom',
+        '/pgo/optimized_path',
+    ):
+        assert topic in source

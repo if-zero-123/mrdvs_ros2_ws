@@ -1,5 +1,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <nav_msgs/msg/path.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/point.hpp>
@@ -15,6 +16,7 @@
 #include "pgos/commons.h"
 #include "pgos/simple_pgo.h"
 #include "interface/srv/save_maps.hpp"
+#include "pgo_outputs.h"
 #include <pcl/io/io.h>
 #include <fstream>
 #include <yaml-cpp/yaml.h>
@@ -31,8 +33,14 @@ struct NodeConfig
 
 struct NodeState
 {
+    struct SyncedFrame
+    {
+        CloudWithPose cloud_with_pose;
+        nav_msgs::msg::Odometry odom;
+    };
+
     std::mutex message_mutex;
-    std::queue<CloudWithPose> cloud_buffer;
+    std::queue<SyncedFrame> frame_buffer;
     double last_message_time = 0.0;
 };
 
@@ -48,6 +56,9 @@ public:
         m_cloud_sub.subscribe(this, m_node_config.cloud_topic, qos.get_rmw_qos_profile());
         m_odom_sub.subscribe(this, m_node_config.odom_topic, qos.get_rmw_qos_profile());
         m_loop_marker_pub = this->create_publisher<visualization_msgs::msg::MarkerArray>("/pgo/loop_markers", 10000);
+        m_optimized_odom_pub = this->create_publisher<nav_msgs::msg::Odometry>("/pgo/optimized_odom", 10);
+        const auto latched_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
+        m_optimized_path_pub = this->create_publisher<nav_msgs::msg::Path>("/pgo/optimized_path", latched_qos);
         m_tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
         m_sync = std::make_shared<message_filters::Synchronizer<message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::PointCloud2, nav_msgs::msg::Odometry>>>(message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::PointCloud2, nav_msgs::msg::Odometry>(10), m_cloud_sub, m_odom_sub);
         m_sync->setAgePenalty(0.1);
@@ -86,7 +97,8 @@ public:
     {
 
         std::lock_guard<std::mutex>(m_state.message_mutex);
-        CloudWithPose cp;
+        NodeState::SyncedFrame frame;
+        CloudWithPose &cp = frame.cloud_with_pose;
         cp.pose.setTime(cloud_msg->header.stamp.sec, cloud_msg->header.stamp.nanosec);
         if (cp.pose.second < m_state.last_message_time)
         {
@@ -103,7 +115,8 @@ public:
         cp.pose.t = V3D(odom_msg->pose.pose.position.x, odom_msg->pose.pose.position.y, odom_msg->pose.pose.position.z);
         cp.cloud = CloudType::Ptr(new CloudType);
         pcl::fromROSMsg(*cloud_msg, *cp.cloud);
-        m_state.cloud_buffer.push(cp);
+        frame.odom = *odom_msg;
+        m_state.frame_buffer.push(frame);
     }
 
     void sendBroadCastTF(builtin_interfaces::msg::Time &time)
@@ -188,19 +201,39 @@ public:
         m_loop_marker_pub->publish(marker_array);
     }
 
+    void publishOptimizedOdometry(const nav_msgs::msg::Odometry &local_odom)
+    {
+        if (m_optimized_odom_pub->get_subscription_count() == 0)
+            return;
+        m_optimized_odom_pub->publish(pgo_outputs::makeOptimizedOdometry(
+            local_odom,
+            m_node_config.map_frame,
+            m_pgo->offsetR(),
+            m_pgo->offsetT()));
+    }
+
+    void publishOptimizedPath(const builtin_interfaces::msg::Time &time)
+    {
+        if (m_optimized_path_pub->get_subscription_count() == 0)
+            return;
+        m_optimized_path_pub->publish(pgo_outputs::makeOptimizedPath(
+            m_pgo->keyPoses(), m_node_config.map_frame, time));
+    }
+
     void timerCB()
     {
-        if (m_state.cloud_buffer.size() == 0)
-            return;
-        CloudWithPose cp = m_state.cloud_buffer.front();
-        // 清理队列
+        NodeState::SyncedFrame frame;
         {
             std::lock_guard<std::mutex>(m_state.message_mutex);
-            while (!m_state.cloud_buffer.empty())
+            if (m_state.frame_buffer.empty())
+                return;
+            frame = m_state.frame_buffer.front();
+            while (!m_state.frame_buffer.empty())
             {
-                m_state.cloud_buffer.pop();
+                m_state.frame_buffer.pop();
             }
         }
+        CloudWithPose &cp = frame.cloud_with_pose;
         builtin_interfaces::msg::Time cur_time;
         cur_time.sec = cp.pose.sec;
         cur_time.nanosec = cp.pose.nsec;
@@ -208,6 +241,7 @@ public:
         {
 
             sendBroadCastTF(cur_time);
+            publishOptimizedOdometry(frame.odom);
             return;
         }
 
@@ -216,6 +250,8 @@ public:
         m_pgo->smoothAndUpdate();
 
         sendBroadCastTF(cur_time);
+        publishOptimizedOdometry(frame.odom);
+        publishOptimizedPath(cur_time);
 
         publishLoopMarkers(cur_time);
     }
@@ -291,6 +327,8 @@ private:
     std::shared_ptr<SimplePGO> m_pgo;
     rclcpp::TimerBase::SharedPtr m_timer;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr m_loop_marker_pub;
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr m_optimized_odom_pub;
+    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr m_optimized_path_pub;
     rclcpp::Service<interface::srv::SaveMaps>::SharedPtr m_save_map_srv;
     message_filters::Subscriber<sensor_msgs::msg::PointCloud2> m_cloud_sub;
     message_filters::Subscriber<nav_msgs::msg::Odometry> m_odom_sub;

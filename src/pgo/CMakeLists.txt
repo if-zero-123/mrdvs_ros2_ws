@@ -53,6 +53,7 @@ include_directories(
 )
 
 set(SRC_LIST
+  src/pgo_outputs.cpp
   src/pgos/commons.cpp
   src/pgos/simple_pgo.cpp
 )
@@ -88,6 +89,23 @@ install(DIRECTORY rviz DESTINATION share/${PROJECT_NAME})
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_pytest REQUIRED)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(test_pgo_outputs
+    test/test_pgo_outputs.cpp
+    src/pgo_outputs.cpp
+  )
+  target_include_directories(test_pgo_outputs PRIVATE src)
+  ament_target_dependencies(test_pgo_outputs
+    nav_msgs
+    geometry_msgs
+  )
+  target_link_libraries(test_pgo_outputs
+    ${PCL_LIBRARIES}
+    ${GTSAM_LIBRARY}
+    TBB::tbb
+    TBB::tbbmalloc
+  )
 
   ament_add_pytest_test(test_mrdvs_pgo_contract
     test/test_mrdvs_pgo_contract.py
