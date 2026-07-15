@@ -336,7 +336,7 @@ ros2 service call /pgo/save_maps interface/srv/SaveMaps \
 
 输出包括 `map.pcd`、`poses.txt` 和 `patches/*.pcd`。这些是运行产物，不提交到 Git。在线显示使用 `/pgo/optimized_map`，保存服务则生成未经在线显示体素参数二次降采样的 PCD 和各关键帧位姿，适合后续离线处理。
 
-当前已验证真实设备可以启动 4 个目标节点，`/fastlio2/body_cloud` 与 `/fastlio2/lio_odom` 均约为 `10Hz`，三段 TF 可查询，静止首关键帧可成功保存地图。尚未执行超过 60 秒的真实闭合路线，因此还未验证 MRDVS 场景中的回环检出率、误检率和优化后的闭环误差。另有一个与 PGO 无关的既有驱动问题：`lx_lidar_ros.launch.py` 单独运行时，Ctrl+C 也会在 MRDVS 驱动关闭阶段触发 ROS guard-condition 异常并以 `-6` 退出；进程不会残留，设备可以重新连接。
+当前已验证真实设备可以启动驱动、FAST-LIO2、PGO 和新 RViz，`/fastlio2/body_cloud`、`/fastlio2/lio_odom` 与 `/pgo/optimized_odom` 均约为 `10Hz`；实测优化位姿为 `frame_id=map`、`child_frame_id=mrdvs_imu`，与 `map -> mrdvs_imu` TF 数值一致。静止首关键帧已发布 `/pgo/optimized_path` 和包含 3404 点的 `/pgo/optimized_map`，新 RViz 对三个优化话题均已建立订阅，保存地图服务也已验证成功。尚未执行超过 60 秒的真实闭合路线，因此还未验证 MRDVS 场景中的回环检出率、误检率、回环后的历史地图重建画面和闭环误差。另有一个与 PGO 无关的既有驱动问题：`lx_lidar_ros.launch.py` 单独运行时，Ctrl+C 也会在 MRDVS 驱动关闭阶段触发 ROS guard-condition 异常并以 `-6` 退出；进程不会残留，设备可以重新连接。
 
 ### 读取 SDK IMU 外参
 
@@ -1004,7 +1004,7 @@ ros2 launch pgo mrdvs_pgo_full_launch.py \
 
 ## 更新记录
 
-- 2026-07-15：PGO 新增 `/pgo/optimized_odom`、`/pgo/optimized_path` 和 `/pgo/optimized_map`；普通建图增量拼接关键帧地图，回环后按优化关键帧重建历史地图，并新增独立 RViz 配置同时显示实时扫描、全局位置/姿态、优化轨迹、优化地图和回环连线。
+- 2026-07-15：PGO 新增 `/pgo/optimized_odom`、`/pgo/optimized_path` 和 `/pgo/optimized_map`；普通建图增量拼接关键帧地图，回环后按优化关键帧重建历史地图，并新增独立 RViz 配置同时显示实时扫描、全局位置/姿态、优化轨迹、优化地图和回环连线；实机静止验证优化位姿约 10Hz、首帧优化地图 3404 点，新 RViz 一键启动和话题订阅正常。
 - 2026-07-15：从 `liangheming/FASTLIO2_ROS2@f516daa` 接入 `interface` 和在线 PGO，新增 MRDVS 回环专用 `lio_local` 配置和一体启动；真实设备已验证约 `10Hz` 点云/里程计、`map -> lio_local -> mrdvs_imu -> mrdvs_tof` TF 与优化地图保存，超过 60 秒的闭合路线回环验收仍待执行。
 - 2026-07-15：使用最新 `imu_utils` Allan 标定结果更新 MRDVS IMU 噪声参数；FAST-LIO2 和 FAST-LIVO2 共 5 个 MRDVS 配置统一采用 `avg-axis` 的 `acc_n=2.0331770033767380e-02`、`gyr_n=3.0946620647727048e-03`、`acc_w=5.4152704615929208e-04`、`gyr_w=4.2000451972629459e-05`。
 - 2026-07-10：新增 MRDVS IMU 实时诊断程序，可输出 JSON 汇总、逐样本 CSV 和 PNG 图表；具体实测报告单独归档，不写入项目 README。
