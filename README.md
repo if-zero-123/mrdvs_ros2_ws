@@ -805,6 +805,108 @@ tools/analyze_mrdvs_bag.py /home/zero/bag/mrdvs_livo_debug_20260708_155719 --max
 - `fast_livo2.rviz` 相对设计基线 `2b00c0d` 的 diff 为空；RViz 历史累计保持不变，本轮没有修改该文件。
 - 未完成风险：尚未使用真实 MRDVS 验证快速手持时是否仍会陀螺饱和、点云拉线或重新静止后继续发散，也尚未在 RK3588 上验证 ARM 原生编译与运行；因此当前不能声称硬件漂移问题已经解决。
 
+### FAST-LIO2 MRDVS 在线回环设计与实施计划（2026-07-15）
+
+> **执行要求：** 使用 `executing-plans` 在当前会话逐阶段实施；新增行为必须先写测试并确认测试因功能缺失而失败，再写最小实现。上游 PGO 核心算法保持可追溯，不在首轮接入中重写。
+
+**目标：** 在不影响现有 FAST-LIO2 无回环模式和 FAST-LIVO2 的前提下，为 MRDVS + FAST-LIO2 增加运行中实时回环修正、回环可视化和优化地图保存能力。
+
+**架构：** FAST-LIO2 使用局部坐标 `lio_local` 连续输出 `lio_local -> mrdvs_imu`；PGO 同步 `/fastlio2/body_cloud` 与 `/fastlio2/lio_odom`，沿用上游关键帧、位置候选、ICP 和 GTSAM/iSAM2 流程，发布 `map -> lio_local` 全局修正。最终 TF 为 `map -> lio_local -> mrdvs_imu -> mrdvs_tof`，回环不会修改 FAST-LIO2 的滤波状态。
+
+**技术栈：** ROS2 Jazzy、C++17、PCL、Eigen、GTSAM 4.2、yaml-cpp、ament/GoogleTest、Python launch/pytest。上游基线为 `liangheming/FASTLIO2_ROS2@f516daac08bc46e50e814a2e7d6c8352ed8141bb`。
+
+#### 全局约束
+
+- 首轮接入只引入上游 `interface` 和 `pgo`，不引入 `localizer`、`hba`，不重写 `SimplePGO` 的关键帧、ICP 或 iSAM2 算法。
+- 不修改 `src/fast_livo/` 下任何文件，也不在 PGO launch 中启动 FAST-LIVO2。
+- 不改变 `src/fastlio2/config/mrdvs.yaml`、`mrdvs_refined.yaml` 的无回环行为；回环使用独立的 `mrdvs_pgo.yaml`。
+- PGO 输入固定为 `/fastlio2/body_cloud` 和 `/fastlio2/lio_odom`，全局坐标为 `map`，FAST-LIO2 局部坐标为 `lio_local`。
+- 现有 `ros2 launch fastlio2 mrdvs_full_launch.py` 保持可用；回环使用独立入口 `ros2 launch pgo mrdvs_pgo_full_launch.py`。
+- 项目说明、计划和更新记录只写入本 `README.md`，不新增其他 Markdown 文档。
+- 每个可构建、可回退阶段单独提交；不提交 `build/`、`install/`、`log/`、bag 或运行时地图。
+
+#### 阶段一：导入可追溯的上游 PGO 基线
+
+**文件：**
+
+- 新建 `src/interface/`：保留上游 5 个服务定义及 ROS2 接口包构建文件。
+- 新建 `src/pgo/`：保留上游 PGO 源码、默认配置、launch、RViz 和 MIT License。
+- 新建 `src/pgo/test/test_mrdvs_pgo_contract.py`：验证上游包布局和来源基线。
+
+**步骤：**
+
+- [ ] 先创建契约测试，断言 `src/interface/srv/SaveMaps.srv`、`src/pgo/src/pgo_node.cpp`、`src/pgo/src/pgos/simple_pgo.cpp` 和两个 `package.xml` 存在；运行 `python3 -m pytest -q src/pgo/test/test_mrdvs_pgo_contract.py`，确认因文件尚未导入而失败。
+- [ ] 从上游提交 `f516daac08bc46e50e814a2e7d6c8352ed8141bb` 导入 `interface/` 和 `pgo/`，不导入上游 FAST-LIO2、localizer 或 HBA，也不覆盖当前 MRDVS FAST-LIO2。
+- [ ] 重跑契约测试，确认上游包布局通过，并用 `git diff --no-index` 核对首轮导入的 PGO 核心文件与上游一致。
+- [ ] 安装 `libgtsam-dev`，运行 `colcon build --packages-select interface pgo --symlink-install --cmake-args -DBUILD_TESTING=ON`，只修复 Jazzy/Noble 的构建兼容问题，不改变算法行为。
+- [ ] 提交 `feat: import upstream FAST-LIO2 PGO`。
+
+#### 阶段二：用测试驱动 MRDVS 配置和 TF 契约
+
+**文件：**
+
+- 新建 `src/fastlio2/config/mrdvs_pgo.yaml`：复制当前稳定 `mrdvs.yaml` 的传感器、噪声和外参参数，只将 `world_frame` 改为 `lio_local`。
+- 新建 `src/pgo/config/mrdvs.yaml`：写入 MRDVS 话题、`map`/`lio_local` 坐标和上游首轮阈值。
+- 修改 `src/pgo/test/test_mrdvs_pgo_contract.py`：解析并比较两份 YAML。
+- 修改 `src/pgo/CMakeLists.txt`、`src/pgo/package.xml`：将 Python 契约测试注册到 `colcon test`。
+
+**配置接口：**
+
+```yaml
+# src/pgo/config/mrdvs.yaml
+cloud_topic: /fastlio2/body_cloud
+odom_topic: /fastlio2/lio_odom
+map_frame: map
+local_frame: lio_local
+key_pose_delta_deg: 10
+key_pose_delta_trans: 0.5
+loop_search_radius: 1.0
+loop_time_tresh: 60.0
+loop_score_tresh: 0.15
+loop_submap_half_range: 5
+submap_resolution: 0.1
+min_loop_detect_duration: 5.0
+```
+
+**步骤：**
+
+- [ ] 先扩展测试，断言 `mrdvs_pgo.yaml` 除 `world_frame=lio_local` 外与稳定配置一致，PGO MRDVS 配置与上方接口逐项一致；确认测试因文件缺失而失败。
+- [ ] 写入两份最小配置，注册 `ament_cmake_pytest`，重跑目标 pytest 和 `colcon test --packages-select pgo`。
+- [ ] 使用脚本确认 `src/fast_livo/` 和原有 FAST-LIO2 MRDVS 配置相对阶段开始的 Git 基线无改动。
+- [ ] 提交 `feat: add MRDVS PGO frame configuration`。
+
+#### 阶段三：新增独立一体启动入口
+
+**文件：**
+
+- 新建 `src/pgo/launch/mrdvs_pgo_full_launch.py`：启动 MRDVS LiDAR 模式、FAST-LIO2 `mrdvs_pgo.yaml`、PGO `mrdvs.yaml` 和可选 PGO RViz。
+- 修改 `src/pgo/test/test_mrdvs_pgo_contract.py`：验证 launch 默认值和组件边界。
+
+**启动接口：**
+
+```bash
+ros2 launch pgo mrdvs_pgo_full_launch.py \
+  camera_ip:=192.168.100.82 \
+  fastlio_delay:=3.0 \
+  enable_rviz:=true
+```
+
+**步骤：**
+
+- [ ] 先扩展测试，断言 launch 默认引用 `mrdvs_pgo.yaml`、PGO 的 `mrdvs.yaml`、MRDVS 驱动和 PGO RViz，且不包含 `fast_livo`；确认测试因 launch 缺失而失败。
+- [ ] 实现独立 launch，复用现有 `lx_lidar_ros.launch.py` 和 `mrdvs_lio_launch.py`，保持 `mrdvs_imu -> mrdvs_tof` 厂家结构外参不变。
+- [ ] 运行 pytest、`python3 -m py_compile src/pgo/launch/mrdvs_pgo_full_launch.py` 和 `ros2 launch pgo mrdvs_pgo_full_launch.py --show-args`。
+- [ ] 提交 `feat: launch MRDVS FAST-LIO2 with online PGO`。
+
+#### 阶段四：集成验证、使用说明和硬件验收
+
+- [ ] 构建 `lx_camera_ros`、`interface`、`fastlio2`、`pgo`，运行这些包的全部测试并用 `colcon test-result --verbose` 确认无失败。
+- [ ] 启动后检查 `/fastlio2/body_cloud`、`/fastlio2/lio_odom` 的频率和时间戳同步，检查 TF 只有 `map -> lio_local -> mrdvs_imu -> mrdvs_tof` 一条父子链。
+- [ ] 真实设备静止初始化后沿闭合路线运行超过 60 秒并回到起点，确认 `/pgo/loop_markers` 出现回环边、`map -> lio_local` 发生有限修正且节点不退出。
+- [ ] 调用 `ros2 service call /pgo/save_maps interface/srv/SaveMaps "{file_path: '/tmp/mrdvs_pgo_map', save_patches: true}"`，确认生成 `map.pcd`、`poses.txt` 和 `patches/`；这些运行产物不提交。
+- [ ] 只有在上游默认阈值实测漏检或误检时才调整 `loop_search_radius`、`loop_score_tresh` 或 `submap_resolution`，并记录调整证据。
+- [ ] 在本 README 补充启动、保存地图、回环观察、已验证范围和未完成硬件风险，提交 `docs: document MRDVS online PGO workflow`。
+
 ## Codex 工作规则
 
 当前工作空间的 Codex 用户规则写在 `AGENTS.md`。后续 Codex 在本目录内工作时，应先读取并遵循该文件。
