@@ -835,11 +835,13 @@ tools/analyze_mrdvs_bag.py /home/zero/bag/mrdvs_livo_debug_20260708_155719 --max
 
 **步骤：**
 
-- [ ] 先创建契约测试，断言 `src/interface/srv/SaveMaps.srv`、`src/pgo/src/pgo_node.cpp`、`src/pgo/src/pgos/simple_pgo.cpp` 和两个 `package.xml` 存在；运行 `python3 -m pytest -q src/pgo/test/test_mrdvs_pgo_contract.py`，确认因文件尚未导入而失败。
-- [ ] 从上游提交 `f516daac08bc46e50e814a2e7d6c8352ed8141bb` 导入 `interface/` 和 `pgo/`，不导入上游 FAST-LIO2、localizer 或 HBA，也不覆盖当前 MRDVS FAST-LIO2。
-- [ ] 重跑契约测试，确认上游包布局通过，并用 `git diff --no-index` 核对首轮导入的 PGO 核心文件与上游一致。
-- [ ] 安装 `libgtsam-dev`，运行 `colcon build --packages-select interface pgo --symlink-install --cmake-args -DBUILD_TESTING=ON`，只修复 Jazzy/Noble 的构建兼容问题，不改变算法行为。
-- [ ] 提交 `feat: import upstream FAST-LIO2 PGO`。
+- [x] 先创建契约测试，断言 `src/interface/srv/SaveMaps.srv`、`src/pgo/src/pgo_node.cpp`、`src/pgo/src/pgos/simple_pgo.cpp` 和两个 `package.xml` 存在；运行 `python3 -m pytest -q src/pgo/test/test_mrdvs_pgo_contract.py`，确认因文件尚未导入而失败。
+- [x] 从上游提交 `f516daac08bc46e50e814a2e7d6c8352ed8141bb` 导入 `interface/` 和 `pgo/`，不导入上游 FAST-LIO2、localizer 或 HBA，也不覆盖当前 MRDVS FAST-LIO2。
+- [x] 重跑契约测试，确认上游包布局通过，并用 `git diff --no-index` 核对首轮导入的 PGO 核心文件与上游一致。
+- [x] 安装 `libgtsam-dev`，运行 `colcon build --packages-select interface pgo --symlink-install --cmake-args -DBUILD_TESTING=ON`，只修复 Jazzy/Noble 的构建兼容问题，不改变算法行为。
+- [x] 提交 `feat: import upstream FAST-LIO2 PGO`。
+
+阶段一在 Ubuntu 24.04 上安装了 `libgtsam-dev 4.2.0+dfsg-1build1`。该包的 `GTSAMConfig.cmake` 引用了未随 Debian 包发布的 `libCppUnitLite.a`，因此 PGO CMake 改为直接查找已安装的 GTSAM 头文件和 `libgtsam.so` 并显式链接 TBB；独立编译链接探针和最终 `pgo_node` 动态库检查均通过。`pgo_node.cpp`、`simple_pgo.cpp`、`simple_pgo.h` 与上游固定提交保持一致。
 
 #### 阶段二：用测试驱动 MRDVS 配置和 TF 契约
 
