@@ -872,10 +872,10 @@ min_loop_detect_duration: 5.0
 
 **步骤：**
 
-- [ ] 先扩展测试，断言 `mrdvs_pgo.yaml` 除 `world_frame=lio_local` 外与稳定配置一致，PGO MRDVS 配置与上方接口逐项一致；确认测试因文件缺失而失败。
-- [ ] 写入两份最小配置，注册 `ament_cmake_pytest`，重跑目标 pytest 和 `colcon test --packages-select pgo`。
-- [ ] 使用脚本确认 `src/fast_livo/` 和原有 FAST-LIO2 MRDVS 配置相对阶段开始的 Git 基线无改动。
-- [ ] 提交 `feat: add MRDVS PGO frame configuration`。
+- [x] 先扩展测试，断言 `mrdvs_pgo.yaml` 除 `world_frame=lio_local` 外与稳定配置一致，PGO MRDVS 配置与上方接口逐项一致；确认测试因文件缺失而失败。
+- [x] 写入两份最小配置，注册 `ament_cmake_pytest`，重跑目标 pytest 和 `colcon test --packages-select pgo`。
+- [x] 使用脚本确认 `src/fast_livo/` 和原有 FAST-LIO2 MRDVS 配置相对阶段开始的 Git 基线无改动。
+- [x] 提交 `feat: add MRDVS PGO frame configuration`。
 
 #### 阶段三：新增独立一体启动入口
 
