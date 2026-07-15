@@ -94,3 +94,8 @@ def test_mrdvs_pgo_full_launch_exposes_the_isolated_pipeline_contract():
         'camera_ip': '192.168.100.82',
         'fastlio_delay': '3.0',
     }
+
+
+def test_pgo_message_time_guard_has_a_deterministic_initial_value():
+    source = (WORKSPACE_ROOT / 'src/pgo/src/pgo_node.cpp').read_text()
+    assert 'double last_message_time = 0.0;' in source

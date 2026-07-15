@@ -33,7 +33,7 @@ struct NodeState
 {
     std::mutex message_mutex;
     std::queue<CloudWithPose> cloud_buffer;
-    double last_message_time;
+    double last_message_time = 0.0;
 };
 
 class PGONode : public rclcpp::Node
