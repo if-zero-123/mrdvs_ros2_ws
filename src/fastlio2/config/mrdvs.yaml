@@ -16,10 +16,10 @@ move_thresh: 1.5
 
 # MRDVS IMU Allan calibration, avg-axis.
 # acc_n: m/s^2, gyr_n: rad/s, acc_w: m/s^2, gyr_w: rad/s.
-na: 2.0348936872780068e-02
-ng: 2.3162072810468197e-03
-nba: 4.5452036338894608e-04
-nbg: 2.3553527673141791e-05
+na: 2.0331770033767380e-02
+ng: 3.0946620647727048e-03
+nba: 5.4152704615929208e-04
+nbg: 4.2000451972629459e-05
 
 imu_init_num: 20
 near_search_num: 5

@@ -242,12 +242,12 @@ t_il: [0.014569, -0.002738, 0.022567]
 
 | 标定项 | 数值 | 单位 | FAST-LIO2 字段 | FAST-LIVO2 字段 |
 | --- | ---: | --- | --- | --- |
-| `acc_n` | `2.0348936872780068e-02` | `m/s^2` | `na` | `acc_cov` |
-| `gyr_n` | `2.3162072810468197e-03` | `rad/s` | `ng` | `gyr_cov` |
-| `acc_w` | `4.5452036338894608e-04` | `m/s^2` | `nba` | `b_acc_cov` |
-| `gyr_w` | `2.3553527673141791e-05` | `rad/s` | `nbg` | `b_gyr_cov` |
+| `acc_n` | `2.0331770033767380e-02` | `m/s^2` | `na` | `acc_cov` |
+| `gyr_n` | `3.0946620647727048e-03` | `rad/s` | `ng` | `gyr_cov` |
+| `acc_w` | `5.4152704615929208e-04` | `m/s^2` | `nba` | `b_acc_cov` |
+| `gyr_w` | `4.2000451972629459e-05` | `rad/s` | `nbg` | `b_gyr_cov` |
 
-这些值已同步写入 `src/fastlio2/config/mrdvs.yaml`、`src/fastlio2/config/mrdvs_refined.yaml` 和 `src/fast_livo/config/mrdvs.yaml`。FAST-LIVO2 源码也已改为读取 `b_acc_cov`、`b_gyr_cov` 配置项，不再使用写死的默认值。
+这些值已同步写入 FAST-LIO2 的 `src/fastlio2/config/mrdvs.yaml`、`src/fastlio2/config/mrdvs_refined.yaml`、`src/fastlio2/config/mrdvs_lidar_imu_init.yaml`，以及 FAST-LIVO2 的 `src/fast_livo/config/mrdvs.yaml`、`src/fast_livo/config/mrdvs_lidar_imu_init.yaml`。FAST-LIVO2 源码也已改为读取 `b_acc_cov`、`b_gyr_cov` 配置项，不再使用写死的默认值。
 
 ### 读取 SDK IMU 外参
 
@@ -811,6 +811,7 @@ tools/analyze_mrdvs_bag.py /home/zero/bag/mrdvs_livo_debug_20260708_155719 --max
 
 ## 更新记录
 
+- 2026-07-15：使用最新 `imu_utils` Allan 标定结果更新 MRDVS IMU 噪声参数；FAST-LIO2 和 FAST-LIVO2 共 5 个 MRDVS 配置统一采用 `avg-axis` 的 `acc_n=2.0331770033767380e-02`、`gyr_n=3.0946620647727048e-03`、`acc_w=5.4152704615929208e-04`、`gyr_w=4.2000451972629459e-05`。
 - 2026-07-10：新增 MRDVS IMU 实时诊断程序，可输出 JSON 汇总、逐样本 CSV 和 PNG 图表；具体实测报告单独归档，不写入项目 README。
 - 2026-07-10：完成 FAST-LIVO2 手持稳定性三个代码阶段和 x86_64 软件集成验证：驱动关键模式设置/读回、MRDVS 点与 absolute-us 时间过滤、连续静止 IMU 初始化及 gyro bias 初值均已落地，构建与测试无失败，指定 bag 的抽样点时间跨度低于 `200ms`；真实 MRDVS 快速手持和 RK3588 ARM 原生验收仍未完成。
 - 2026-07-10：修复 MRDVS SDK 约每 `2.0~2.5s` 出现重复或小幅回退 IMU 时间戳时，FAST-LIVO2 错误清空静止初始化窗口而长期无法达到 600 个样本的问题；这些非递增样本现在只丢弃且保留初始化进度，前后方向超过 `0.2s` 的大跳变仍会重置同步流，并新增时间戳决策回归测试。
