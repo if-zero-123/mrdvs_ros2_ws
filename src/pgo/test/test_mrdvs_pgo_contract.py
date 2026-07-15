@@ -1,5 +1,9 @@
+import importlib.util
 from pathlib import Path
 
+from launch import LaunchContext
+from launch.actions import DeclareLaunchArgument
+from launch.utilities import perform_substitutions
 import pytest
 import yaml
 
@@ -54,4 +58,39 @@ def test_mrdvs_pgo_configuration_matches_the_online_loop_contract():
         'loop_submap_half_range': 5,
         'submap_resolution': 0.1,
         'min_loop_detect_duration': 5.0,
+    }
+
+
+def test_mrdvs_pgo_full_launch_exposes_the_isolated_pipeline_contract():
+    relative_path = 'src/pgo/launch/mrdvs_pgo_full_launch.py'
+    path = WORKSPACE_ROOT / relative_path
+    assert path.is_file(), f'missing PGO launch file: {relative_path}'
+
+    source = path.read_text()
+    for required_token in (
+        "FindPackageShare('lx_camera_ros')",
+        "FindPackageShare('fastlio2')",
+        "FindPackageShare('pgo')",
+        "'mrdvs_pgo.yaml'",
+        "'mrdvs.yaml'",
+        "package='pgo'",
+        "package='rviz2'",
+    ):
+        assert required_token in source
+    assert 'fast_livo' not in source
+
+    spec = importlib.util.spec_from_file_location('mrdvs_pgo_full_launch', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    description = module.generate_launch_description()
+    context = LaunchContext()
+    defaults = {
+        entity.name: perform_substitutions(context, entity.default_value)
+        for entity in description.entities
+        if isinstance(entity, DeclareLaunchArgument)
+    }
+    assert defaults == {
+        'enable_rviz': 'true',
+        'camera_ip': '192.168.100.82',
+        'fastlio_delay': '3.0',
     }

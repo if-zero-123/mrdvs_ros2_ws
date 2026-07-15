@@ -895,10 +895,10 @@ ros2 launch pgo mrdvs_pgo_full_launch.py \
 
 **步骤：**
 
-- [ ] 先扩展测试，断言 launch 默认引用 `mrdvs_pgo.yaml`、PGO 的 `mrdvs.yaml`、MRDVS 驱动和 PGO RViz，且不包含 `fast_livo`；确认测试因 launch 缺失而失败。
-- [ ] 实现独立 launch，复用现有 `lx_lidar_ros.launch.py` 和 `mrdvs_lio_launch.py`，保持 `mrdvs_imu -> mrdvs_tof` 厂家结构外参不变。
-- [ ] 运行 pytest、`python3 -m py_compile src/pgo/launch/mrdvs_pgo_full_launch.py` 和 `ros2 launch pgo mrdvs_pgo_full_launch.py --show-args`。
-- [ ] 提交 `feat: launch MRDVS FAST-LIO2 with online PGO`。
+- [x] 先扩展测试，断言 launch 默认引用 `mrdvs_pgo.yaml`、PGO 的 `mrdvs.yaml`、MRDVS 驱动和 PGO RViz，且不包含 `fast_livo`；确认测试因 launch 缺失而失败。
+- [x] 实现独立 launch，复用现有 `lx_lidar_ros.launch.py` 和 `mrdvs_lio_launch.py`，保持 `mrdvs_imu -> mrdvs_tof` 厂家结构外参不变。
+- [x] 运行 pytest、`python3 -m py_compile src/pgo/launch/mrdvs_pgo_full_launch.py` 和 `ros2 launch pgo mrdvs_pgo_full_launch.py --show-args`。
+- [x] 提交 `feat: launch MRDVS FAST-LIO2 with online PGO`。
 
 #### 阶段四：集成验证、使用说明和硬件验收
 
