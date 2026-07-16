@@ -597,6 +597,14 @@ IMU 初始化设计：
 
 测试采用现有 `slam_sensor_settings` 纯函数和 gtest 结构，先验证光学坐标值 `0` 被接受、机器人坐标值 `1` 被拒绝，再实现驱动逻辑；同时检查 launch 参数契约、Python 语法、`lx_camera_ros` 构建与相关测试。实机验收时确认启动日志和 SDK 读回均为 `LX_INT_XYZ_COORDINATE=0`，并检查 `/lx_camera_node/LxCamera_Cloud` 继续正常发布。完成后只提交本设计涉及的 README、launch、驱动头文件/实现和测试文件。
 
+### MRDVS FAST-LIVO2 原版 IMU 初始化行为恢复设计（2026-07-16）
+
+本轮只恢复 MRDVS FAST-LIVO2 的运行配置，不删除连续静止 IMU 初始化的通用代码、参数读取和测试。`src/fast_livo/config/mrdvs.yaml` 与 `src/fast_livo/config/mrdvs_lidar_imu_init.yaml` 统一把 `imu.imu_int_frame` 从 `600` 恢复为原版的 `30`，并把 `imu.stationary_init_en` 设为 `false`；两个静止阈值保留但在该模式下不参与初始化判定。
+
+运行时重新进入 FAST-LIVO2 原有初始化分支：日志使用 `IMU Initializing`，累计超过 30 个 IMU 样本后结束初始化，不再要求连续静止窗口达到 100%，重力仍由初始化样本的平均加速度估计，gyro bias 仍按原版写为零。IMU 重复/小幅回退时间戳丢弃、超过 `0.2s` 的大时间跳变处理、Allan 噪声参数、LiDAR/IMU 外参、点云时间过滤以及 `LX_INT_XYZ_COORDINATE=0` 均保持不变。
+
+这是纯配置行为切换，不新增测试框架。验证要求为：两份源 YAML 和安装产物均为 `imu_int_frame=30`、`stationary_init_en=false`；`fast_livo` 构建及现有测试零失败；实机启动日志出现 `IMU Initializing` 而不出现 `Stationary IMU Initializing`，并确认初始化无需满足原静止阈值即可结束。设计、实施计划和更新记录继续只写入本 README，配置修改与文档收尾分别提交、创建日期快照标签并推送当前功能分支。
+
 # MRDVS LiDAR/SLAM 光学点云坐标固定实施计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development`（推荐）或 `executing-plans` 逐项实施。所有生产代码修改必须先有能够正确失败的测试。
