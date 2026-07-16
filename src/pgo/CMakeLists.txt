@@ -99,6 +99,7 @@ if(BUILD_TESTING)
   ament_target_dependencies(test_pgo_outputs
     nav_msgs
     geometry_msgs
+    visualization_msgs
   )
   target_link_libraries(test_pgo_outputs
     ${PCL_LIBRARIES}

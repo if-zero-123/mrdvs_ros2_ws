@@ -64,6 +64,7 @@ public:
         const auto latched_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
         m_optimized_path_pub = this->create_publisher<nav_msgs::msg::Path>("/pgo/optimized_path", latched_qos);
         m_optimized_map_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/pgo/optimized_map", latched_qos);
+        m_pose_marker_pub = this->create_publisher<visualization_msgs::msg::MarkerArray>("/pgo/pose_markers", latched_qos);
         m_tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
         m_sync = std::make_shared<message_filters::Synchronizer<message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::PointCloud2, nav_msgs::msg::Odometry>>>(message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::PointCloud2, nav_msgs::msg::Odometry>(10), m_cloud_sub, m_odom_sub);
         m_sync->setAgePenalty(0.1);
@@ -218,15 +219,22 @@ public:
         m_loop_marker_pub->publish(marker_array);
     }
 
-    void publishOptimizedOdometry(const nav_msgs::msg::Odometry &local_odom)
+    void publishOptimizedPose(const nav_msgs::msg::Odometry &local_odom)
     {
-        if (m_optimized_odom_pub->get_subscription_count() == 0)
+        const bool publish_odom = m_optimized_odom_pub->get_subscription_count() > 0;
+        const bool publish_markers = m_pose_marker_pub->get_subscription_count() > 0;
+        if (!publish_odom && !publish_markers)
             return;
-        m_optimized_odom_pub->publish(pgo_outputs::makeOptimizedOdometry(
+
+        const nav_msgs::msg::Odometry optimized_odom = pgo_outputs::makeOptimizedOdometry(
             local_odom,
             m_node_config.map_frame,
             m_pgo->offsetR(),
-            m_pgo->offsetT()));
+            m_pgo->offsetT());
+        if (publish_odom)
+            m_optimized_odom_pub->publish(optimized_odom);
+        if (publish_markers)
+            m_pose_marker_pub->publish(pgo_outputs::makePoseMarkers(optimized_odom));
     }
 
     void publishOptimizedPath(const builtin_interfaces::msg::Time &time)
@@ -288,7 +296,7 @@ public:
         {
 
             sendBroadCastTF(cur_time);
-            publishOptimizedOdometry(frame.odom);
+            publishOptimizedPose(frame.odom);
             return;
         }
 
@@ -299,7 +307,7 @@ public:
         m_pgo->smoothAndUpdate();
 
         sendBroadCastTF(cur_time);
-        publishOptimizedOdometry(frame.odom);
+        publishOptimizedPose(frame.odom);
         publishOptimizedPath(cur_time);
         publishOptimizedMap(cur_time, cp.pose.second, loop_detected);
 
@@ -380,6 +388,7 @@ private:
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr m_optimized_odom_pub;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr m_optimized_path_pub;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_optimized_map_pub;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr m_pose_marker_pub;
     rclcpp::Service<interface::srv::SaveMaps>::SharedPtr m_save_map_srv;
     message_filters::Subscriber<sensor_msgs::msg::PointCloud2> m_cloud_sub;
     message_filters::Subscriber<nav_msgs::msg::Odometry> m_odom_sub;

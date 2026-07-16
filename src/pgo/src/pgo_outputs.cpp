@@ -1,8 +1,10 @@
 #include "pgo_outputs.h"
 
 #include <Eigen/Geometry>
+#include <iomanip>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/voxel_grid.h>
+#include <sstream>
 
 namespace pgo_outputs
 {
@@ -111,5 +113,51 @@ nav_msgs::msg::Path makeOptimizedPath(
         path.poses.push_back(pose);
     }
     return path;
+}
+
+visualization_msgs::msg::MarkerArray makePoseMarkers(
+    const nav_msgs::msg::Odometry &optimized_odom)
+{
+    visualization_msgs::msg::Marker origin_marker;
+    origin_marker.header = optimized_odom.header;
+    origin_marker.ns = "pgo_pose_labels";
+    origin_marker.id = 0;
+    origin_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    origin_marker.action = visualization_msgs::msg::Marker::ADD;
+    origin_marker.pose.position.z = 0.25;
+    origin_marker.pose.orientation.w = 1.0;
+    origin_marker.scale.z = 0.25;
+    origin_marker.color.r = 1.0F;
+    origin_marker.color.g = 1.0F;
+    origin_marker.color.b = 1.0F;
+    origin_marker.color.a = 0.9F;
+    origin_marker.text = "map origin\n(0.000, 0.000, 0.000) m";
+
+    visualization_msgs::msg::Marker position_marker;
+    position_marker.header = optimized_odom.header;
+    position_marker.ns = "pgo_pose_labels";
+    position_marker.id = 1;
+    position_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    position_marker.action = visualization_msgs::msg::Marker::ADD;
+    position_marker.pose.position = optimized_odom.pose.pose.position;
+    position_marker.pose.position.z += 0.5;
+    position_marker.pose.orientation.w = 1.0;
+    position_marker.scale.z = 0.3;
+    position_marker.color.r = 1.0F;
+    position_marker.color.g = 0.85F;
+    position_marker.color.b = 0.1F;
+    position_marker.color.a = 1.0F;
+
+    std::ostringstream text;
+    text << std::fixed << std::setprecision(3)
+         << "x: " << optimized_odom.pose.pose.position.x << " m\n"
+         << "y: " << optimized_odom.pose.pose.position.y << " m\n"
+         << "z: " << optimized_odom.pose.pose.position.z << " m";
+    position_marker.text = text.str();
+
+    visualization_msgs::msg::MarkerArray markers;
+    markers.markers.push_back(origin_marker);
+    markers.markers.push_back(position_marker);
+    return markers;
 }
 }  // namespace pgo_outputs

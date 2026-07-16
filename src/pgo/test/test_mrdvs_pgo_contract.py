@@ -152,6 +152,7 @@ def test_pgo_publishes_corrected_pose_and_path_topics():
     for topic in (
         '/pgo/optimized_odom',
         '/pgo/optimized_path',
+        '/pgo/pose_markers',
     ):
         assert topic in source
 

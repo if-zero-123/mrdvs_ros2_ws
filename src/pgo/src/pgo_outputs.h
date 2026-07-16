@@ -6,6 +6,7 @@
 #include <builtin_interfaces/msg/time.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include "pgos/simple_pgo.h"
 
@@ -36,4 +37,7 @@ nav_msgs::msg::Path makeOptimizedPath(
     const std::vector<KeyPoseWithCloud> &key_poses,
     const std::string &map_frame,
     const builtin_interfaces::msg::Time &stamp);
+
+visualization_msgs::msg::MarkerArray makePoseMarkers(
+    const nav_msgs::msg::Odometry &optimized_odom);
 }  // namespace pgo_outputs

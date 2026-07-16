@@ -130,4 +130,38 @@ TEST(PgoOutputs, MapResolutionDownsamplesPointsInTheSameVoxel)
 
     EXPECT_EQ(filtered_map->size(), 1U);
 }
+
+TEST(PgoOutputs, BuildsMapOriginAndRealtimePositionLabels)
+{
+    nav_msgs::msg::Odometry optimized_odom;
+    optimized_odom.header.frame_id = "map";
+    optimized_odom.header.stamp.sec = 42;
+    optimized_odom.child_frame_id = "mrdvs_imu";
+    optimized_odom.pose.pose.position.x = 1.23456;
+    optimized_odom.pose.pose.position.y = -2.34567;
+    optimized_odom.pose.pose.position.z = 0.45644;
+    optimized_odom.pose.pose.orientation.w = 1.0;
+
+    const auto markers = pgo_outputs::makePoseMarkers(optimized_odom);
+
+    ASSERT_EQ(markers.markers.size(), 2U);
+    const auto &origin_marker = markers.markers[0];
+    EXPECT_EQ(origin_marker.header, optimized_odom.header);
+    EXPECT_EQ(origin_marker.ns, "pgo_pose_labels");
+    EXPECT_EQ(origin_marker.id, 0);
+    EXPECT_EQ(origin_marker.type, visualization_msgs::msg::Marker::TEXT_VIEW_FACING);
+    EXPECT_EQ(origin_marker.text, "map origin\n(0.000, 0.000, 0.000) m");
+    EXPECT_DOUBLE_EQ(origin_marker.pose.position.x, 0.0);
+    EXPECT_DOUBLE_EQ(origin_marker.pose.position.y, 0.0);
+
+    const auto &position_marker = markers.markers[1];
+    EXPECT_EQ(position_marker.header, optimized_odom.header);
+    EXPECT_EQ(position_marker.ns, "pgo_pose_labels");
+    EXPECT_EQ(position_marker.id, 1);
+    EXPECT_EQ(position_marker.type, visualization_msgs::msg::Marker::TEXT_VIEW_FACING);
+    EXPECT_EQ(position_marker.text, "x: 1.235 m\ny: -2.346 m\nz: 0.456 m");
+    EXPECT_DOUBLE_EQ(position_marker.pose.position.x, 1.23456);
+    EXPECT_DOUBLE_EQ(position_marker.pose.position.y, -2.34567);
+    EXPECT_DOUBLE_EQ(position_marker.pose.position.z, 0.95644);
+}
 }  // namespace
