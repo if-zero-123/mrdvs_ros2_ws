@@ -572,7 +572,6 @@ src/fast_livo/config/mrdvs_lidar_imu_init.yaml
 - 2026-07-10：新增 MRDVS IMU 实时诊断程序，可输出 JSON 汇总、逐样本 CSV 和 PNG 图表；具体实测报告单独归档，不写入项目 README。
 - 2026-07-10：完成 FAST-LIVO2 手持稳定性三个代码阶段和 x86_64 软件集成验证：驱动关键模式设置/读回、MRDVS 点与 absolute-us 时间过滤、连续静止 IMU 初始化及 gyro bias 初值均已落地，构建与测试无失败，指定 bag 的抽样点时间跨度低于 `200ms`；真实 MRDVS 快速手持和 RK3588 ARM 原生验收仍未完成。
 - 2026-07-10：修复 MRDVS SDK 约每 `2.0~2.5s` 出现重复或小幅回退 IMU 时间戳时，FAST-LIVO2 错误清空静止初始化窗口而长期无法达到 600 个样本的问题；这些非递增样本现在只丢弃且保留初始化进度，前后方向超过 `0.2s` 的大跳变仍会重置同步流，并新增时间戳决策回归测试。
-- 2026-07-10：记录 FAST-LIVO2 快速手持扫描稳定性修复设计和测试驱动实施计划：默认采用约 `±500 deg/s` 陀螺量程，显式关闭会破坏逐点时间的 RGBD 对齐和 3D 反畸变，修复近场阈值和异常点时间处理，并采用约 3 秒静止 IMU 初始化；现有 RViz 观察配置保持不变。
 - 2026-07-09：补充 MRDVS 原始驱动两种点云启动方式：`lx_camera_ros.launch.py` 用于 RGBD 对齐彩色点云显示，`lx_lidar_ros.launch.py` 用于带强度和点级时间戳的 SLAM 点云。
 - 2026-07-09：FAST-LIVO2 的 LIO 更新增加零有效约束保护；当 `effective feature num` 为 0 时不再计算 NaN 平均残差、不执行 LIO EKF 更新，也不把当前帧写入 voxel map，避免跟踪丢失后的坏帧污染地图。
 - 2026-07-09：修复 FAST-LIVO2 遇到 IMU 前向大跳变后持续丢弃后续 IMU 导致卡住的问题；现在大跳变会清空旧 LiDAR/RGB/IMU 同步缓冲和 IMU 传播缓冲，并把当前 IMU 作为新的时间基准继续接收。
