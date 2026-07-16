@@ -605,6 +605,203 @@ IMU 初始化设计：
 
 这是纯配置行为切换，不新增测试框架。验证要求为：两份源 YAML 和安装产物均为 `imu_int_frame=30`、`stationary_init_en=false`；`fast_livo` 构建及现有测试零失败；实机启动日志出现 `IMU Initializing` 而不出现 `Stationary IMU Initializing`，并确认初始化无需满足原静止阈值即可结束。设计、实施计划和更新记录继续只写入本 README，配置修改与文档收尾分别提交、创建日期快照标签并推送当前功能分支。
 
+# MRDVS FAST-LIVO2 原版 IMU 初始化行为恢复实施计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development`（推荐）或 `executing-plans` 逐项实施。步骤使用复选框跟踪；配置修改前必须先运行能够正确失败的契约检查。
+
+**Goal:** 让两份 MRDVS FAST-LIVO2 配置恢复原版 30 样本快速 IMU 初始化，并关闭连续静止窗口要求。
+
+**Architecture:** 只切换 `mrdvs.yaml` 和 `mrdvs_lidar_imu_init.yaml` 的两个运行参数，由现有 `stationary_init_en_` 分支选择原版 `IMU_init()` 路径。静止初始化实现、时间戳过滤、噪声参数、外参及其他稳定性修复全部保留；使用一次性 Python 配置契约完成 RED/GREEN，再通过构建、现有测试、安装产物和实机日志验证。
+
+**Tech Stack:** ROS2 Jazzy、FAST-LIVO2、YAML、colcon、Python 3、MRDVS SDK。
+
+## Global Constraints
+
+- 只把两份 MRDVS YAML 的 `imu.imu_int_frame` 设为 `30`、`imu.stationary_init_en` 设为 `false`。
+- 保留 `imu_init_max_gyr_norm=0.10`、`imu_init_acc_norm_tolerance=0.75`，但禁用静止模式后两者不参与初始化判定。
+- 不删除或修改 `imu_initialization_utils.h`、`IMU_Processing.cpp`、`LIVMapper.cpp` 及其测试。
+- 不修改 IMU 时间戳过滤、Allan 噪声、LiDAR/IMU 外参、RGB/点云外参、时间偏移、点云预处理和 RViz 配置。
+- 项目说明、设计、计划和更新记录只写入本 README；配置实现和文档收尾分别提交、打日期快照标签并推送当前功能分支。
+
+---
+
+### 任务一：恢复两份 MRDVS 运行配置并验证
+
+**文件：**
+
+- 修改：`src/fast_livo/config/mrdvs.yaml`
+- 修改：`src/fast_livo/config/mrdvs_lidar_imu_init.yaml`
+
+**接口：**
+
+- 消费：现有 `imu.stationary_init_en` 与 `imu.imu_int_frame` 参数读取逻辑
+- 产出：`stationary_init_en=false` 选择原版初始化分支，`imu_int_frame=30` 设置原版样本阈值
+
+- [ ] **步骤 1：运行配置契约并确认按预期失败**
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+
+for relative in (
+    "src/fast_livo/config/mrdvs.yaml",
+    "src/fast_livo/config/mrdvs_lidar_imu_init.yaml",
+):
+    text = Path(relative).read_text()
+    assert "imu_int_frame: 30" in text, f"{relative}: imu_int_frame is not 30"
+    assert "stationary_init_en: false" in text, f"{relative}: stationary initialization is not disabled"
+PY
+```
+
+预期：在第一份仍为 `imu_int_frame: 600` 的 YAML 处触发 `AssertionError`，证明检查能够识别当前错误配置。
+
+- [ ] **步骤 2：修改两份 YAML 的最小参数集合**
+
+两份文件统一修改为：
+
+```yaml
+imu:
+  imu_en: true
+  imu_int_frame: 30
+  stationary_init_en: false
+  imu_init_max_gyr_norm: 0.10
+  imu_init_acc_norm_tolerance: 0.75
+```
+
+除 `imu_int_frame` 和 `stationary_init_en` 外，不修改同一配置块的任何数值。
+
+- [ ] **步骤 3：重新运行配置契约并确认通过**
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+
+for relative in (
+    "src/fast_livo/config/mrdvs.yaml",
+    "src/fast_livo/config/mrdvs_lidar_imu_init.yaml",
+):
+    text = Path(relative).read_text()
+    assert "imu_int_frame: 30" in text, f"{relative}: imu_int_frame is not 30"
+    assert "stationary_init_en: false" in text, f"{relative}: stationary initialization is not disabled"
+PY
+```
+
+预期：命令退出码为 0，没有断言输出。
+
+- [ ] **步骤 4：构建并运行 `fast_livo` 全部测试**
+
+```bash
+colcon build --packages-select fast_livo \
+  --cmake-clean-cache --cmake-args -DBUILD_TESTING=ON
+source install/setup.bash
+colcon test --packages-select fast_livo --event-handlers console_direct+
+colcon test-result --verbose
+```
+
+预期：`fast_livo` 构建成功，全部测试零错误、零失败。
+
+- [ ] **步骤 5：验证安装产物与源配置一致**
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+
+for name in ("mrdvs.yaml", "mrdvs_lidar_imu_init.yaml"):
+    source = Path("src/fast_livo/config") / name
+    installed = Path("install/fast_livo/share/fast_livo/config") / name
+    assert installed.read_text() == source.read_text(), f"installed {name} differs from source"
+    text = installed.read_text()
+    assert "imu_int_frame: 30" in text
+    assert "stationary_init_en: false" in text
+PY
+```
+
+预期：命令退出码为 0，两份安装 YAML 均与源文件逐字一致。
+
+- [ ] **步骤 6：实机验证原版初始化路径和地图输出**
+
+```bash
+source install/setup.bash
+ros2 launch fast_livo mrdvs_full_launch.py \
+  camera_ip:=192.168.100.82 \
+  imu_angular_range_level:=2 \
+  use_rviz:=True
+```
+
+启动后确认：
+
+```text
+IMU Initializing:
+```
+
+且不出现：
+
+```text
+Stationary IMU Initializing:
+```
+
+另一个终端执行：
+
+```bash
+source install/setup.bash
+ros2 param get /laserMapping imu.imu_int_frame
+ros2 param get /laserMapping imu.stationary_init_en
+ros2 topic echo --once --no-arr /cloud_registered
+```
+
+预期：参数分别返回 `30` 和 `false`，无需满足连续静止阈值即可结束初始化，并收到一帧 `/cloud_registered`。
+
+- [ ] **步骤 7：提交并推送配置实现**
+
+```bash
+python3 /home/zero/.codex/skills/manage-git-projects/scripts/git_manager.py \
+  commit-push --confirm-current-changes --allow-non-main \
+  --message "fix: restore original MRDVS IMU initialization mode"
+```
+
+预期：只提交两份 MRDVS YAML，创建新的日期快照标签，并推送当前分支和标签。
+
+---
+
+### 任务二：记录完成状态并收尾
+
+**文件：**
+
+- 修改：`README.md`
+
+**接口：**
+
+- 消费：任务一的构建、测试、安装产物和实机验证结果
+- 产出：当前运行行为、验证证据和 Git 提交的可复查记录
+
+- [ ] **步骤 1：更新计划和更新记录**
+
+把本计划已完成步骤改为 `[x]`，并在 `## 更新记录` 首行加入：
+
+```text
+- 2026-07-16：MRDVS FAST-LIVO2 恢复原版 30 样本 IMU 初始化，运行配置关闭连续静止窗口；保留静止初始化通用代码、时间戳过滤、噪声、外参和点云修复，实机确认使用 `IMU Initializing` 路径并正常发布地图。
+```
+
+- [ ] **步骤 2：执行最终静态验证**
+
+```bash
+git diff --check
+colcon test-result --verbose
+git status --short
+```
+
+预期：无空白错误，测试零失败，工作树只包含 README 收尾修改。
+
+- [ ] **步骤 3：提交并推送文档收尾**
+
+```bash
+python3 /home/zero/.codex/skills/manage-git-projects/scripts/git_manager.py \
+  commit-push --confirm-current-changes --allow-non-main \
+  --message "docs: record original MRDVS IMU initialization validation"
+```
+
+预期：README 单独提交，创建新的日期快照标签，并推送当前分支和标签。
+
 # MRDVS LiDAR/SLAM 光学点云坐标固定实施计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development`（推荐）或 `executing-plans` 逐项实施。所有生产代码修改必须先有能够正确失败的测试。
