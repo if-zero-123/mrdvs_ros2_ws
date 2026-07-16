@@ -14,3 +14,10 @@ TEST(SlamSensorSettings, RequiresReadbackToMatchRequestedValue)
   EXPECT_TRUE(lx_camera_ros::criticalSensorSettingMatches(2, 2));
   EXPECT_FALSE(lx_camera_ros::criticalSensorSettingMatches(2, 1));
 }
+
+TEST(SlamSensorSettings, RequiresOpticalXyzCoordinateForSlam)
+{
+  EXPECT_TRUE(lx_camera_ros::isRequiredSlamXyzCoordinate(0));
+  EXPECT_FALSE(lx_camera_ros::isRequiredSlamXyzCoordinate(1));
+  EXPECT_FALSE(lx_camera_ros::isRequiredSlamXyzCoordinate(-1));
+}

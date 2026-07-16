@@ -46,6 +46,7 @@ def generate_launch_description():
             {"LX_INT_IMU_ANGULAR_RANGE_LEVEL": ParameterValue(imu_angular_range_level, value_type=int)},
             #<!-- 0:mm,  1:m-->
             {"LX_INT_XYZ_UNIT": 1},
+            {"LX_INT_XYZ_COORDINATE": 0},
 
             # <!-- 2D配置 -->
             {"LX_INT_RGBD_ALIGN_MODE": 0},

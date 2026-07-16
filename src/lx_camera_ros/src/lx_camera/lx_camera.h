@@ -132,6 +132,7 @@ private:
   int lx_rgbd_align = 0;
   bool critical_sensor_settings_configured_ = false;
   int expected_imu_angular_range_level_ = -1;
+  int expected_xyz_coordinate_ = -1;
   int expected_rgbd_align_mode_ = -1;
   int expected_enable_3d_undistort_ = -1;
   bool publish_base_tof_tf_ = true;

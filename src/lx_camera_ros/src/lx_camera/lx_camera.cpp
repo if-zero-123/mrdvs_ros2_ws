@@ -245,7 +245,28 @@ LxCamera::LxCamera(DcLib *dynamic_lib) : Node("lx_camera_node") {
   }
 
   SET_INT_PARAM(LX_INT_XYZ_UNIT);
-  SET_INT_PARAM(LX_INT_XYZ_COORDINATE);
+
+  int xyz_coordinate = is_slam_sensor_mode
+    ? lx_camera_ros::kSlamOpticalXyzCoordinate
+    : -1;
+  this->declare_parameter<int>("LX_INT_XYZ_COORDINATE", xyz_coordinate);
+  this->get_parameter<int>("LX_INT_XYZ_COORDINATE", xyz_coordinate);
+  if (is_slam_sensor_mode &&
+      !lx_camera_ros::isRequiredSlamXyzCoordinate(xyz_coordinate)) {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Invalid SLAM sensor setting LX_INT_XYZ_COORDINATE: "
+                 "expected=%d, requested=%d; DcStartStream blocked",
+                 lx_camera_ros::kSlamOpticalXyzCoordinate, xyz_coordinate);
+    return;
+  }
+  if (xyz_coordinate >= 0 &&
+      !set_critical_int(LX_INT_XYZ_COORDINATE,
+                        "LX_INT_XYZ_COORDINATE", xyz_coordinate)) {
+    return;
+  }
+  if (xyz_coordinate >= 0) {
+    expected_xyz_coordinate_ = xyz_coordinate;
+  }
 
   int rgbd_align_mode = is_slam_sensor_mode ? 0 : -1;
   this->declare_parameter<int>("LX_INT_RGBD_ALIGN_MODE", rgbd_align_mode);
@@ -356,6 +377,12 @@ int LxCamera::Start() {
       !VerifyCriticalIntParameter(LX_INT_IMU_ANGULAR_RANGE_LEVEL,
                                   "LX_INT_IMU_ANGULAR_RANGE_LEVEL",
                                   expected_imu_angular_range_level_)) {
+    return static_cast<int>(LX_ERROR);
+  }
+  if (expected_xyz_coordinate_ >= 0 &&
+      !VerifyCriticalIntParameter(LX_INT_XYZ_COORDINATE,
+                                  "LX_INT_XYZ_COORDINATE",
+                                  expected_xyz_coordinate_)) {
     return static_cast<int>(LX_ERROR);
   }
   if (expected_rgbd_align_mode_ >= 0 &&

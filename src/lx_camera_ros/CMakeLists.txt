@@ -31,6 +31,7 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 if(BUILD_TESTING)
 find_package(ament_cmake_gtest REQUIRED)
+find_package(ament_cmake_pytest REQUIRED)
 endif()
 
 rosidl_generate_interfaces(${PROJECT_NAME}
@@ -139,6 +140,10 @@ ament_add_gtest(test_slam_sensor_settings
 				test/test_slam_sensor_settings.cpp)
 target_include_directories(test_slam_sensor_settings PRIVATE
 				${PROJECT_SOURCE_DIR}/src)
+
+ament_add_pytest_test(test_lidar_launch_contract
+				test/test_lidar_launch_contract.py
+				TIMEOUT 30)
 endif()
 
 
