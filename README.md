@@ -629,7 +629,7 @@ IMU 初始化设计：
 - 产出：`constexpr int lx_camera_ros::kSlamOpticalXyzCoordinate = 0`
 - 产出：`bool lx_camera_ros::isRequiredSlamXyzCoordinate(int coordinate)`
 
-- [ ] **步骤 1：先添加失败测试**
+- [x] **步骤 1：先添加失败测试**
 
 ```cpp
 TEST(SlamSensorSettings, RequiresOpticalXyzCoordinateForSlam)
@@ -640,7 +640,7 @@ TEST(SlamSensorSettings, RequiresOpticalXyzCoordinateForSlam)
 }
 ```
 
-- [ ] **步骤 2：运行目标测试并确认按预期失败**
+- [x] **步骤 2：运行目标测试并确认按预期失败**
 
 ```bash
 colcon build --packages-select lx_camera_ros \
@@ -649,7 +649,7 @@ colcon build --packages-select lx_camera_ros \
 
 预期：编译 `test_slam_sensor_settings.cpp` 失败，错误明确指出 `isRequiredSlamXyzCoordinate` 尚未定义。
 
-- [ ] **步骤 3：添加最小策略实现**
+- [x] **步骤 3：添加最小策略实现**
 
 在 `slam_sensor_settings.h` 的命名空间内加入：
 
@@ -662,7 +662,7 @@ inline bool isRequiredSlamXyzCoordinate(int coordinate)
 }
 ```
 
-- [ ] **步骤 4：重新构建并运行目标 gtest**
+- [x] **步骤 4：重新构建并运行目标 gtest**
 
 ```bash
 colcon build --packages-select lx_camera_ros \
@@ -694,7 +694,7 @@ colcon test-result --verbose
 - 产出：`int LxCamera::expected_xyz_coordinate_ = -1`
 - 产出：SLAM 模式下的 SDK 设置与 `DcStartStream` 前读回校验
 
-- [ ] **步骤 1：先新建失败的接线契约测试**
+- [x] **步骤 1：先新建失败的接线契约测试**
 
 ```python
 from pathlib import Path
@@ -714,7 +714,7 @@ def test_lidar_launch_and_driver_require_optical_xyz_coordinates():
     assert 'VerifyCriticalIntParameter(LX_INT_XYZ_COORDINATE,' in driver_source
 ```
 
-- [ ] **步骤 2：运行契约测试并确认按预期失败**
+- [x] **步骤 2：运行契约测试并确认按预期失败**
 
 ```bash
 python3 -m pytest -q src/lx_camera_ros/test/test_lidar_launch_contract.py
@@ -722,7 +722,7 @@ python3 -m pytest -q src/lx_camera_ros/test/test_lidar_launch_contract.py
 
 预期：测试因 launch、成员字段、SDK 设置或读回调用尚不存在而失败，而不是因为 Python 语法或路径错误。
 
-- [ ] **步骤 3：把 pytest 纳入包测试**
+- [x] **步骤 3：把 pytest 纳入包测试**
 
 在 `package.xml` 增加：
 
@@ -741,7 +741,7 @@ ament_add_pytest_test(test_lidar_launch_contract
 )
 ```
 
-- [ ] **步骤 4：让 LiDAR launch 显式传入光学坐标**
+- [x] **步骤 4：让 LiDAR launch 显式传入光学坐标**
 
 在 `LX_INT_XYZ_UNIT` 后加入：
 
@@ -749,7 +749,7 @@ ament_add_pytest_test(test_lidar_launch_contract
 {"LX_INT_XYZ_COORDINATE": 0},
 ```
 
-- [ ] **步骤 5：记录驱动期望值**
+- [x] **步骤 5：记录驱动期望值**
 
 在 `lx_camera.h` 的关键传感器状态成员中加入：
 
@@ -757,7 +757,7 @@ ament_add_pytest_test(test_lidar_launch_contract
 int expected_xyz_coordinate_ = -1;
 ```
 
-- [ ] **步骤 6：用关键参数路径替换通用设置宏**
+- [x] **步骤 6：用关键参数路径替换通用设置宏**
 
 删除构造函数中的：
 
@@ -791,7 +791,7 @@ if (xyz_coordinate >= 0) {
 }
 ```
 
-- [ ] **步骤 7：在启动数据流前读回**
+- [x] **步骤 7：在启动数据流前读回**
 
 在 `Start()` 的关键整数参数校验区域加入：
 
@@ -804,7 +804,7 @@ if (expected_xyz_coordinate_ >= 0 &&
 }
 ```
 
-- [ ] **步骤 8：运行契约、语法、构建和全部包测试**
+- [x] **步骤 8：运行契约、语法、构建和全部包测试**
 
 ```bash
 python3 -m pytest -q src/lx_camera_ros/test/test_lidar_launch_contract.py
@@ -818,7 +818,7 @@ colcon test-result --verbose
 
 预期：pytest、Python 语法、构建和 `lx_camera_ros` 全部测试通过，零失败。
 
-- [ ] **步骤 9：提交并推送可运行实现**
+- [x] **步骤 9：提交并推送可运行实现**
 
 ```bash
 python3 /home/zero/.codex/skills/manage-git-projects/scripts/git_manager.py \
@@ -841,7 +841,7 @@ python3 /home/zero/.codex/skills/manage-git-projects/scripts/git_manager.py \
 - 消费：安装后的 `lx_lidar_ros.launch.py` 和 `/lx_camera_node/LxCamera_LxInt` 服务
 - 产出：可复查的运行说明、验证结果和更新记录
 
-- [ ] **步骤 1：启动实机 LiDAR 模式**
+- [x] **步骤 1：启动实机 LiDAR 模式**
 
 ```bash
 source install/setup.bash
@@ -856,7 +856,7 @@ LX_INT_XYZ_COORDINATE: 0
 Verified critical sensor setting LX_INT_XYZ_COORDINATE: actual=0
 ```
 
-- [ ] **步骤 2：从 ROS 服务独立读回 SDK 状态**
+- [x] **步骤 2：从 ROS 服务独立读回 SDK 状态**
 
 ```bash
 source install/setup.bash
@@ -867,7 +867,7 @@ ros2 service call /lx_camera_node/LxCamera_LxInt \
 
 预期：`result.ret=0` 且 `cur_value=0`。
 
-- [ ] **步骤 3：确认点云继续发布**
+- [x] **步骤 3：确认点云继续发布**
 
 ```bash
 source install/setup.bash
@@ -876,7 +876,7 @@ ros2 topic echo --once --no-arr /lx_camera_node/LxCamera_Cloud
 
 预期：收到一帧 `frame_id=mrdvs_tof` 的 `PointCloud2`，字段包含 `x/y/z/intensity/timestamp/row_pos/col_pos`。
 
-- [ ] **步骤 4：更新说明和记录**
+- [x] **步骤 4：更新说明和记录**
 
 在本计划中将完成项改为 `[x]`，在 `## 更新记录` 首行加入：
 
@@ -884,7 +884,7 @@ ros2 topic echo --once --no-arr /lx_camera_node/LxCamera_Cloud
 - 2026-07-16：MRDVS LiDAR/SLAM 模式固定并读回校验 `LX_INT_XYZ_COORDINATE=0`；设置、读回失败或值不一致时阻止启动数据流，实机确认 SDK 返回 0 且 XYZIRT 点云正常发布。
 ```
 
-- [ ] **步骤 5：执行最终静态验证**
+- [x] **步骤 5：执行最终静态验证**
 
 ```bash
 git diff --check
@@ -895,7 +895,7 @@ git status --short
 
 预期：无空白错误、无 Python 语法错误、测试零失败；工作树只包含 README 收尾修改。
 
-- [ ] **步骤 6：提交并推送验收记录**
+- [x] **步骤 6：提交并推送验收记录**
 
 ```bash
 python3 /home/zero/.codex/skills/manage-git-projects/scripts/git_manager.py \
@@ -1322,6 +1322,7 @@ ros2 launch pgo mrdvs_pgo_full_launch.py \
 
 ## 更新记录
 
+- 2026-07-16：MRDVS LiDAR/SLAM 模式固定并读回校验 `LX_INT_XYZ_COORDINATE=0`；设置、读回失败或值不一致时阻止启动数据流，实机确认 SDK 返回 0 且 XYZIRT 点云正常发布。
 - 2026-07-16：PGO RViz 增加 `map` 原点坐标轴、原点 `(0,0,0)` 标签和设备实时 `x/y/z` 数值标签；默认布局精简为单个折叠的 Displays 面板，移除占空间的辅助面板和旧窗口状态。
 - 2026-07-15：PGO 新增 `/pgo/optimized_odom`、`/pgo/optimized_path` 和 `/pgo/optimized_map`；普通建图增量拼接关键帧地图，回环后按优化关键帧重建历史地图，并新增独立 RViz 配置同时显示实时扫描、全局位置/姿态、优化轨迹、优化地图和回环连线；实机静止验证优化位姿约 10Hz、首帧优化地图 3404 点，新 RViz 一键启动和话题订阅正常。
 - 2026-07-15：从 `liangheming/FASTLIO2_ROS2@f516daa` 接入 `interface` 和在线 PGO，新增 MRDVS 回环专用 `lio_local` 配置和一体启动；真实设备已验证约 `10Hz` 点云/里程计、`map -> lio_local -> mrdvs_imu -> mrdvs_tof` TF 与优化地图保存，超过 60 秒的闭合路线回环验收仍待执行。
