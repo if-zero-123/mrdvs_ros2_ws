@@ -597,6 +597,314 @@ IMU 初始化设计：
 
 测试采用现有 `slam_sensor_settings` 纯函数和 gtest 结构，先验证光学坐标值 `0` 被接受、机器人坐标值 `1` 被拒绝，再实现驱动逻辑；同时检查 launch 参数契约、Python 语法、`lx_camera_ros` 构建与相关测试。实机验收时确认启动日志和 SDK 读回均为 `LX_INT_XYZ_COORDINATE=0`，并检查 `/lx_camera_node/LxCamera_Cloud` 继续正常发布。完成后只提交本设计涉及的 README、launch、驱动头文件/实现和测试文件。
 
+# MRDVS LiDAR/SLAM 光学点云坐标固定实施计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development`（推荐）或 `executing-plans` 逐项实施。所有生产代码修改必须先有能够正确失败的测试。
+
+**Goal:** 所有 `is_xyz=2` 的 MRDVS LiDAR/SLAM 数据流强制使用 `LX_INT_XYZ_COORDINATE=0`，并在 SDK 设置或读回异常时拒绝启动数据流。
+
+**Architecture:** `slam_sensor_settings.h` 提供可独立测试的光学坐标策略；`lx_camera.cpp` 负责参数声明、SDK 设置和启动前读回；`lx_lidar_ros.launch.py` 显式传递数值 `0`。gtest 验证策略，pytest 契约测试验证 launch 与驱动接线，实机验证最终 SDK 状态和点云输出。
+
+**Tech Stack:** ROS2 Jazzy、C++14、rclcpp、ament_cmake、GoogleTest、pytest、MRDVS SDK。
+
+## Global Constraints
+
+- 只固定 `LX_INT_XYZ_COORDINATE=0`；不修改 RGB 去畸变、相机内参、`Rcl/Pcl`、LiDAR/IMU 外参和时间偏移。
+- 保留非 SLAM 模式现有行为；只有 `is_xyz=2` 时强制光学坐标。
+- 设置失败、读回失败或实际值不为 `0` 时必须阻止 `DcStartStream`。
+- 项目只保留一个 `README.md`，设计、计划、使用说明和更新记录均写入本文件。
+- 只提交本任务相关文件；每个可回退阶段提交、创建日期快照标签并推送当前功能分支。
+
+---
+
+### 任务一：定义并测试 SLAM 光学坐标策略
+
+**文件：**
+
+- 修改：`src/lx_camera_ros/test/test_slam_sensor_settings.cpp`
+- 修改：`src/lx_camera_ros/src/lx_camera/slam_sensor_settings.h`
+
+**接口：**
+
+- 产出：`constexpr int lx_camera_ros::kSlamOpticalXyzCoordinate = 0`
+- 产出：`bool lx_camera_ros::isRequiredSlamXyzCoordinate(int coordinate)`
+
+- [ ] **步骤 1：先添加失败测试**
+
+```cpp
+TEST(SlamSensorSettings, RequiresOpticalXyzCoordinateForSlam)
+{
+  EXPECT_TRUE(lx_camera_ros::isRequiredSlamXyzCoordinate(0));
+  EXPECT_FALSE(lx_camera_ros::isRequiredSlamXyzCoordinate(1));
+  EXPECT_FALSE(lx_camera_ros::isRequiredSlamXyzCoordinate(-1));
+}
+```
+
+- [ ] **步骤 2：运行目标测试并确认按预期失败**
+
+```bash
+colcon build --packages-select lx_camera_ros \
+  --cmake-clean-cache --cmake-args -DBUILD_TESTING=ON
+```
+
+预期：编译 `test_slam_sensor_settings.cpp` 失败，错误明确指出 `isRequiredSlamXyzCoordinate` 尚未定义。
+
+- [ ] **步骤 3：添加最小策略实现**
+
+在 `slam_sensor_settings.h` 的命名空间内加入：
+
+```cpp
+constexpr int kSlamOpticalXyzCoordinate = 0;
+
+inline bool isRequiredSlamXyzCoordinate(int coordinate)
+{
+  return coordinate == kSlamOpticalXyzCoordinate;
+}
+```
+
+- [ ] **步骤 4：重新构建并运行目标 gtest**
+
+```bash
+colcon build --packages-select lx_camera_ros \
+  --cmake-clean-cache --cmake-args -DBUILD_TESTING=ON
+source install/setup.bash
+colcon test --packages-select lx_camera_ros \
+  --ctest-args -R test_slam_sensor_settings --output-on-failure
+colcon test-result --verbose
+```
+
+预期：`test_slam_sensor_settings` 全部通过，`colcon test-result` 为零失败。
+
+---
+
+### 任务二：接入 launch、驱动设置和启动前读回阻断
+
+**文件：**
+
+- 新建：`src/lx_camera_ros/test/test_lidar_launch_contract.py`
+- 修改：`src/lx_camera_ros/package.xml`
+- 修改：`src/lx_camera_ros/CMakeLists.txt`
+- 修改：`src/lx_camera_ros/launch/lx_lidar_ros.launch.py`
+- 修改：`src/lx_camera_ros/src/lx_camera/lx_camera.h`
+- 修改：`src/lx_camera_ros/src/lx_camera/lx_camera.cpp`
+
+**接口：**
+
+- 消费：`kSlamOpticalXyzCoordinate`、`isRequiredSlamXyzCoordinate(int)`
+- 产出：`int LxCamera::expected_xyz_coordinate_ = -1`
+- 产出：SLAM 模式下的 SDK 设置与 `DcStartStream` 前读回校验
+
+- [ ] **步骤 1：先新建失败的接线契约测试**
+
+```python
+from pathlib import Path
+
+
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_lidar_launch_and_driver_require_optical_xyz_coordinates():
+    launch_source = (PACKAGE_ROOT / 'launch/lx_lidar_ros.launch.py').read_text()
+    header_source = (PACKAGE_ROOT / 'src/lx_camera/lx_camera.h').read_text()
+    driver_source = (PACKAGE_ROOT / 'src/lx_camera/lx_camera.cpp').read_text()
+
+    assert '{"LX_INT_XYZ_COORDINATE": 0}' in launch_source
+    assert 'int expected_xyz_coordinate_ = -1;' in header_source
+    assert 'set_critical_int(LX_INT_XYZ_COORDINATE,' in driver_source
+    assert 'VerifyCriticalIntParameter(LX_INT_XYZ_COORDINATE,' in driver_source
+```
+
+- [ ] **步骤 2：运行契约测试并确认按预期失败**
+
+```bash
+python3 -m pytest -q src/lx_camera_ros/test/test_lidar_launch_contract.py
+```
+
+预期：测试因 launch、成员字段、SDK 设置或读回调用尚不存在而失败，而不是因为 Python 语法或路径错误。
+
+- [ ] **步骤 3：把 pytest 纳入包测试**
+
+在 `package.xml` 增加：
+
+```xml
+<test_depend>ament_cmake_pytest</test_depend>
+```
+
+在 `CMakeLists.txt` 的 `BUILD_TESTING` 分支增加：
+
+```cmake
+find_package(ament_cmake_pytest REQUIRED)
+
+ament_add_pytest_test(test_lidar_launch_contract
+  test/test_lidar_launch_contract.py
+  TIMEOUT 30
+)
+```
+
+- [ ] **步骤 4：让 LiDAR launch 显式传入光学坐标**
+
+在 `LX_INT_XYZ_UNIT` 后加入：
+
+```python
+{"LX_INT_XYZ_COORDINATE": 0},
+```
+
+- [ ] **步骤 5：记录驱动期望值**
+
+在 `lx_camera.h` 的关键传感器状态成员中加入：
+
+```cpp
+int expected_xyz_coordinate_ = -1;
+```
+
+- [ ] **步骤 6：用关键参数路径替换通用设置宏**
+
+删除构造函数中的：
+
+```cpp
+SET_INT_PARAM(LX_INT_XYZ_COORDINATE);
+```
+
+在 `LX_INT_XYZ_UNIT` 设置后加入：
+
+```cpp
+int xyz_coordinate = is_slam_sensor_mode
+  ? lx_camera_ros::kSlamOpticalXyzCoordinate
+  : -1;
+this->declare_parameter<int>("LX_INT_XYZ_COORDINATE", xyz_coordinate);
+this->get_parameter<int>("LX_INT_XYZ_COORDINATE", xyz_coordinate);
+if (is_slam_sensor_mode &&
+    !lx_camera_ros::isRequiredSlamXyzCoordinate(xyz_coordinate)) {
+  RCLCPP_ERROR(this->get_logger(),
+               "Invalid SLAM sensor setting LX_INT_XYZ_COORDINATE: "
+               "expected=%d, requested=%d; DcStartStream blocked",
+               lx_camera_ros::kSlamOpticalXyzCoordinate, xyz_coordinate);
+  return;
+}
+if (xyz_coordinate >= 0 &&
+    !set_critical_int(LX_INT_XYZ_COORDINATE,
+                      "LX_INT_XYZ_COORDINATE", xyz_coordinate)) {
+  return;
+}
+if (xyz_coordinate >= 0) {
+  expected_xyz_coordinate_ = xyz_coordinate;
+}
+```
+
+- [ ] **步骤 7：在启动数据流前读回**
+
+在 `Start()` 的关键整数参数校验区域加入：
+
+```cpp
+if (expected_xyz_coordinate_ >= 0 &&
+    !VerifyCriticalIntParameter(LX_INT_XYZ_COORDINATE,
+                                "LX_INT_XYZ_COORDINATE",
+                                expected_xyz_coordinate_)) {
+  return static_cast<int>(LX_ERROR);
+}
+```
+
+- [ ] **步骤 8：运行契约、语法、构建和全部包测试**
+
+```bash
+python3 -m pytest -q src/lx_camera_ros/test/test_lidar_launch_contract.py
+python3 -m py_compile src/lx_camera_ros/launch/lx_lidar_ros.launch.py
+colcon build --packages-select lx_camera_ros \
+  --cmake-clean-cache --cmake-args -DBUILD_TESTING=ON
+source install/setup.bash
+colcon test --packages-select lx_camera_ros --event-handlers console_direct+
+colcon test-result --verbose
+```
+
+预期：pytest、Python 语法、构建和 `lx_camera_ros` 全部测试通过，零失败。
+
+- [ ] **步骤 9：提交并推送可运行实现**
+
+```bash
+python3 /home/zero/.codex/skills/manage-git-projects/scripts/git_manager.py \
+  commit-push --confirm-current-changes --allow-non-main \
+  --message "fix: pin MRDVS SLAM clouds to optical coordinates"
+```
+
+预期：只提交任务一和任务二列出的实现/测试文件，生成新的 `snapshot-YYYYMMDD-HHMM` 标签，并推送当前分支和标签。
+
+---
+
+### 任务三：实机验收和 README 收尾
+
+**文件：**
+
+- 修改：`README.md`
+
+**接口：**
+
+- 消费：安装后的 `lx_lidar_ros.launch.py` 和 `/lx_camera_node/LxCamera_LxInt` 服务
+- 产出：可复查的运行说明、验证结果和更新记录
+
+- [ ] **步骤 1：启动实机 LiDAR 模式**
+
+```bash
+source install/setup.bash
+ros2 launch lx_camera_ros lx_lidar_ros.launch.py \
+  ip:=192.168.100.82 enable_rviz:=false
+```
+
+预期日志同时包含：
+
+```text
+LX_INT_XYZ_COORDINATE: 0
+Verified critical sensor setting LX_INT_XYZ_COORDINATE: actual=0
+```
+
+- [ ] **步骤 2：从 ROS 服务独立读回 SDK 状态**
+
+```bash
+source install/setup.bash
+ros2 service call /lx_camera_node/LxCamera_LxInt \
+  lx_camera_ros/srv/LxInt \
+  "{cmd: 1078, val: 0, is_set: false}"
+```
+
+预期：`result.ret=0` 且 `cur_value=0`。
+
+- [ ] **步骤 3：确认点云继续发布**
+
+```bash
+source install/setup.bash
+ros2 topic echo --once --no-arr /lx_camera_node/LxCamera_Cloud
+```
+
+预期：收到一帧 `frame_id=mrdvs_tof` 的 `PointCloud2`，字段包含 `x/y/z/intensity/timestamp/row_pos/col_pos`。
+
+- [ ] **步骤 4：更新说明和记录**
+
+在本计划中将完成项改为 `[x]`，在 `## 更新记录` 首行加入：
+
+```text
+- 2026-07-16：MRDVS LiDAR/SLAM 模式固定并读回校验 `LX_INT_XYZ_COORDINATE=0`；设置、读回失败或值不一致时阻止启动数据流，实机确认 SDK 返回 0 且 XYZIRT 点云正常发布。
+```
+
+- [ ] **步骤 5：执行最终静态验证**
+
+```bash
+git diff --check
+python3 -m py_compile src/lx_camera_ros/launch/lx_lidar_ros.launch.py
+colcon test-result --verbose
+git status --short
+```
+
+预期：无空白错误、无 Python 语法错误、测试零失败；工作树只包含 README 收尾修改。
+
+- [ ] **步骤 6：提交并推送验收记录**
+
+```bash
+python3 /home/zero/.codex/skills/manage-git-projects/scripts/git_manager.py \
+  commit-push --confirm-current-changes --allow-non-main \
+  --message "docs: record MRDVS optical coordinate validation"
+```
+
+预期：README 单独提交，生成新的日期快照标签，并推送当前分支和标签。
+
 ### FAST-LIVO2 手持扫描稳定性实施计划
 
 > **执行要求：** 使用 `subagent-driven-development` 或 `executing-plans` 按阶段执行；每个生产代码修改必须先有能正确失败的回归测试。
