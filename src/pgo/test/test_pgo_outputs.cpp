@@ -162,6 +162,6 @@ TEST(PgoOutputs, BuildsMapOriginAndRealtimePositionLabels)
     EXPECT_EQ(position_marker.text, "x: 1.235 m\ny: -2.346 m\nz: 0.456 m");
     EXPECT_DOUBLE_EQ(position_marker.pose.position.x, 1.23456);
     EXPECT_DOUBLE_EQ(position_marker.pose.position.y, -2.34567);
-    EXPECT_DOUBLE_EQ(position_marker.pose.position.z, 0.95644);
+    EXPECT_DOUBLE_EQ(position_marker.pose.position.z, 1.45644);
 }
 }  // namespace

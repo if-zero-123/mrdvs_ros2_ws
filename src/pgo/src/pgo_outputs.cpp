@@ -140,7 +140,7 @@ visualization_msgs::msg::MarkerArray makePoseMarkers(
     position_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
     position_marker.action = visualization_msgs::msg::Marker::ADD;
     position_marker.pose.position = optimized_odom.pose.pose.position;
-    position_marker.pose.position.z += 0.5;
+    position_marker.pose.position.z += 1.0;
     position_marker.pose.orientation.w = 1.0;
     position_marker.scale.z = 0.3;
     position_marker.color.r = 1.0F;

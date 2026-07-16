@@ -309,6 +309,7 @@ ros2 topic hz /pgo/optimized_odom
 ros2 topic echo --once /pgo/optimized_odom
 ros2 topic info /pgo/optimized_path
 ros2 topic info /pgo/optimized_map
+ros2 topic echo --once /pgo/pose_markers
 ros2 run tf2_ros tf2_echo map lio_local
 ros2 topic echo /pgo/loop_markers
 ```
@@ -319,9 +320,10 @@ ros2 topic echo /pgo/loop_markers
 - `/pgo/optimized_odom`：当前闭环修正后的全局位置和姿态，`frame_id=map`，`child_frame_id=mrdvs_imu`；RViz 用坐标轴显示当前位置，其他 ROS2 节点也可以直接订阅。
 - `/pgo/optimized_path`：按 GTSAM 当前结果生成的全部关键帧轨迹，回环后历史轨迹会整体重发。
 - `/pgo/optimized_map`：按每个关键帧的 `r_global/t_global` 拼接的历史点云；普通建图时增量追加，接受回环后按全部优化关键帧重建并立即发布。
+- `/pgo/pose_markers`：显示固定的 `map` 原点 `(0,0,0)` 标签，以及跟随设备实时更新、保留三位小数的 `x/y/z` 全局位置。
 - `/pgo/loop_markers`：被接受的回环节点和连线。
 
-新 RViz 不显示 `/fastlio2/world_cloud` 和 `/fastlio2/lio_path`，因为这两个话题属于未闭环修正的局部结果；继续缓存它们会让旧点云留在回环前的位置。默认优化地图使用 `0.1m` 体素，并将普通地图发布限制为最多每 `1.0s` 一次，回环重建不受该限频影响。大场景中如果 CPU 或 DDS 带宽压力明显，可以增大 `pgo/config/mrdvs.yaml` 的 `optimized_map_resolution` 或 `optimized_map_publish_period`。
+新 RViz 在 `map` 原点和 `mrdvs_imu` 当前位置分别显示红绿蓝坐标轴。默认界面只保留一个 Displays 面板，所有显示项保持折叠，不再恢复之前占用较大空间的 Selection、Tool Properties、Views 和 Time 面板。它不显示 `/fastlio2/world_cloud` 和 `/fastlio2/lio_path`，因为这两个话题属于未闭环修正的局部结果；继续缓存它们会让旧点云留在回环前的位置。默认优化地图使用 `0.1m` 体素，并将普通地图发布限制为最多每 `1.0s` 一次，回环重建不受该限频影响。大场景中如果 CPU 或 DDS 带宽压力明显，可以增大 `pgo/config/mrdvs.yaml` 的 `optimized_map_resolution` 或 `optimized_map_publish_period`。
 
 默认配置每平移 `0.5m` 或旋转 `10deg` 生成关键帧；回环候选需要与当前优化位置相距不超过 `1.0m`，并与当前帧相隔超过 `60s`，ICP fitness score 需要不高于 `0.15`。实测时先静止完成 FAST-LIO2 初始化，再沿闭合路线运行超过 60 秒并回到起点；RViz 中出现 `/pgo/loop_markers` 连线、`map -> lio_local` 从单位变换变为有限修正，表示回环已被接受。未取得闭合路线实测证据前，不要盲目放宽搜索半径或 ICP 阈值。
 
@@ -1004,6 +1006,7 @@ ros2 launch pgo mrdvs_pgo_full_launch.py \
 
 ## 更新记录
 
+- 2026-07-16：PGO RViz 增加 `map` 原点坐标轴、原点 `(0,0,0)` 标签和设备实时 `x/y/z` 数值标签；默认布局精简为单个折叠的 Displays 面板，移除占空间的辅助面板和旧窗口状态。
 - 2026-07-15：PGO 新增 `/pgo/optimized_odom`、`/pgo/optimized_path` 和 `/pgo/optimized_map`；普通建图增量拼接关键帧地图，回环后按优化关键帧重建历史地图，并新增独立 RViz 配置同时显示实时扫描、全局位置/姿态、优化轨迹、优化地图和回环连线；实机静止验证优化位姿约 10Hz、首帧优化地图 3404 点，新 RViz 一键启动和话题订阅正常。
 - 2026-07-15：从 `liangheming/FASTLIO2_ROS2@f516daa` 接入 `interface` 和在线 PGO，新增 MRDVS 回环专用 `lio_local` 配置和一体启动；真实设备已验证约 `10Hz` 点云/里程计、`map -> lio_local -> mrdvs_imu -> mrdvs_tof` TF 与优化地图保存，超过 60 秒的闭合路线回环验收仍待执行。
 - 2026-07-15：使用最新 `imu_utils` Allan 标定结果更新 MRDVS IMU 噪声参数；FAST-LIO2 和 FAST-LIVO2 共 5 个 MRDVS 配置统一采用 `avg-axis` 的 `acc_n=2.0331770033767380e-02`、`gyr_n=3.0946620647727048e-03`、`acc_w=5.4152704615929208e-04`、`gyr_w=4.2000451972629459e-05`。

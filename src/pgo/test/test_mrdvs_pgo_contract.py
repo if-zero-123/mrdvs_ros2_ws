@@ -175,6 +175,7 @@ def test_optimized_pgo_rviz_shows_live_scan_and_corrected_outputs():
         '/pgo/optimized_odom',
         '/pgo/optimized_path',
         '/pgo/optimized_map',
+        '/pgo/pose_markers',
         '/pgo/loop_markers',
     ):
         assert required_topic in source
@@ -186,6 +187,30 @@ def test_optimized_pgo_rviz_shows_live_scan_and_corrected_outputs():
     assert '/fastlio2/lio_path' not in source
 
 
+def test_optimized_pgo_rviz_has_origin_axes_and_a_compact_layout():
+    rviz_path = WORKSPACE_ROOT / 'src/pgo/rviz/mrdvs_pgo_optimized.rviz'
+    config = yaml.safe_load(rviz_path.read_text())
+
+    assert len(config['Panels']) == 1
+    displays_panel = config['Panels'][0]
+    assert displays_panel['Class'] == 'rviz_common/Displays'
+    assert displays_panel['Property Tree Widget']['Expanded'] is None
+
+    displays = config['Visualization Manager']['Displays']
+    axes_by_name = {
+        display['Name']: display
+        for display in displays
+        if display['Class'] == 'rviz_default_plugins/Axes'
+    }
+    assert axes_by_name['Map Origin']['Reference Frame'] == 'map'
+    assert axes_by_name['Device Frame']['Reference Frame'] == 'mrdvs_imu'
+
+    window_geometry = config['Window Geometry']
+    assert 'QMainWindow State' not in window_geometry
+    assert window_geometry['Hide Left Dock'] is False
+    assert window_geometry['Hide Right Dock'] is True
+
+
 def test_readme_documents_the_corrected_pgo_visualization_topics():
     source = (WORKSPACE_ROOT / 'README.md').read_text()
 
@@ -193,5 +218,6 @@ def test_readme_documents_the_corrected_pgo_visualization_topics():
         '/pgo/optimized_odom',
         '/pgo/optimized_path',
         '/pgo/optimized_map',
+        '/pgo/pose_markers',
     ):
         assert topic in source
