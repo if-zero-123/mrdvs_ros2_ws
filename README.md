@@ -589,6 +589,14 @@ IMU 初始化设计：
 - 硬件验收时先静止初始化，再执行慢速与快速手持旋转/平移；确认 IMU 不再贴量程边界，当前配准点云没有随曝光分区产生明显拉线，重新静止后位姿不继续发散。
 - 本设计不修改 `src/fast_livo/rviz_cfg/fast_livo2.rviz`，也不改变用户现有的历史点云观察方式。
 
+### LiDAR/SLAM 点云坐标系固定设计（2026-07-16）
+
+本轮只固定 MRDVS LiDAR/SLAM 数据流的点云坐标系，不修改 RGB 去畸变状态、相机内参、`Rcl/Pcl`、LiDAR/IMU 外参或时间偏移。所有通过 `lx_lidar_ros.launch.py` 启动的 FAST-LIVO2、FAST-LIO2 和 PGO 链路统一要求 `LX_INT_XYZ_COORDINATE=0`，使 `LX_PTR_XYZIRT_DATA` 始终输出 `X` 向右、`Y` 向下、`Z` 向前的 ToF 光学坐标，与厂家 `RDtoRGB/TDtoRGB` 标定坐标及 FAST-LIVO2 当前 `Rcl/Pcl` 保持一致。
+
+实现沿用驱动现有关键传感器参数的失败阻断机制：launch 显式传入 `LX_INT_XYZ_COORDINATE=0`；驱动在 `is_xyz=2` 的 SLAM 模式下只接受数值 `0`，调用 SDK 设置后记录期望值，并在 `DcStartStream` 前通过 `DcGetIntValue` 读回。参数非法、SDK 设置失败、读回失败或实际值不是 `0` 时，节点输出包含期望值和实际值的明确错误，并拒绝启动数据流，避免依赖设备遗留状态。
+
+测试采用现有 `slam_sensor_settings` 纯函数和 gtest 结构，先验证光学坐标值 `0` 被接受、机器人坐标值 `1` 被拒绝，再实现驱动逻辑；同时检查 launch 参数契约、Python 语法、`lx_camera_ros` 构建与相关测试。实机验收时确认启动日志和 SDK 读回均为 `LX_INT_XYZ_COORDINATE=0`，并检查 `/lx_camera_node/LxCamera_Cloud` 继续正常发布。完成后只提交本设计涉及的 README、launch、驱动头文件/实现和测试文件。
+
 ### FAST-LIVO2 手持扫描稳定性实施计划
 
 > **执行要求：** 使用 `subagent-driven-development` 或 `executing-plans` 按阶段执行；每个生产代码修改必须先有能正确失败的回归测试。
