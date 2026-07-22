@@ -1,0 +1,10 @@
+PyYAML<7,>=6
+fastapi<1,>=0.115
+numpy<3,>=1.26
+pydantic<3,>=2.7
+uvicorn<1,>=0.30
+
+[test]
+httpx<1,>=0.27
+pytest-asyncio<1,>=0.23
+pytest<9,>=8

@@ -1,0 +1,6 @@
+Metadata-Version: 2.1
+Name: mrdvs-web-console
+Version: 0.1.0
+Summary: MRDVS handheld data collection web console
+Requires-Python: >=3.12
+Provides-Extra: test
