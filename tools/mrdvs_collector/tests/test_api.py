@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from mrdvs_web_console.api import ApplicationRuntime, create_app
+from mrdvs_web_console.api import (
+    ApplicationRuntime,
+    create_app,
+    imu_socket,
+    pointcloud_socket,
+)
 from mrdvs_web_console.bags import BagManager, BagState
 from mrdvs_web_console.config import ConfigStore
 from mrdvs_web_console.controller import CollectorController
@@ -95,6 +100,29 @@ class FakeSystemControl:
     async def configure_hotspot(self, ssid: str, password: str) -> dict:
         self.hotspot = (ssid, password)
         return {"ssid": ssid, "applies": "next_hotspot_start"}
+
+
+class DisconnectingWebSocket:
+    def __init__(self):
+        self.headers = {"origin": "http://testserver"}
+        self.accepted = False
+        self._disconnect = asyncio.Event()
+
+    async def accept(self):
+        self.accepted = True
+
+    async def close(self, code=1000):
+        self._disconnect.set()
+
+    async def receive(self):
+        await self._disconnect.wait()
+        return {"type": "websocket.disconnect"}
+
+    async def send_bytes(self, _frame):
+        self._disconnect.set()
+
+    async def send_json(self, _sample):
+        self._disconnect.set()
 
 
 @pytest.fixture
@@ -259,3 +287,21 @@ def test_websockets_publish_binary_cloud_and_imu_json(client: TestClient):
         "/ws/imu", headers={"origin": "http://testserver"}
     ) as socket:
         assert socket.receive_json()["angular_velocity"]["z"] == 6.0
+
+
+@pytest.mark.asyncio
+async def test_pointcloud_socket_exits_after_client_disconnect(runtime):
+    websocket = DisconnectingWebSocket()
+
+    await asyncio.wait_for(pointcloud_socket(websocket, runtime), timeout=0.25)
+
+    assert websocket.accepted is True
+
+
+@pytest.mark.asyncio
+async def test_imu_socket_exits_after_client_disconnect(runtime):
+    websocket = DisconnectingWebSocket()
+
+    await asyncio.wait_for(imu_socket(websocket, runtime), timeout=0.25)
+
+    assert websocket.accepted is True

@@ -286,21 +286,35 @@ def _websocket_origin_allowed(websocket: WebSocket, runtime: ApplicationRuntime)
     return origin is None or origin in runtime.config.allowed_origins
 
 
+async def _wait_for_websocket_disconnect(websocket: WebSocket) -> None:
+    try:
+        while True:
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                return
+    except (WebSocketDisconnect, RuntimeError):
+        return
+
+
 async def pointcloud_socket(websocket: WebSocket, runtime: ApplicationRuntime) -> None:
     if not _websocket_origin_allowed(websocket, runtime):
         await websocket.close(code=1008)
         return
     await websocket.accept()
     last_sequence = -1
+    disconnect_task = asyncio.create_task(_wait_for_websocket_disconnect(websocket))
     try:
-        while True:
+        while not disconnect_task.done():
             sequence, frame = runtime.bridge.latest_pointcloud()
             if frame is not None and sequence != last_sequence:
                 await websocket.send_bytes(frame)
                 last_sequence = sequence
-            await asyncio.sleep(0.02)
+            await asyncio.wait((disconnect_task,), timeout=0.02)
     except (WebSocketDisconnect, RuntimeError):
         return
+    finally:
+        disconnect_task.cancel()
+        await asyncio.gather(disconnect_task, return_exceptions=True)
 
 
 async def imu_socket(websocket: WebSocket, runtime: ApplicationRuntime) -> None:
@@ -309,15 +323,19 @@ async def imu_socket(websocket: WebSocket, runtime: ApplicationRuntime) -> None:
         return
     await websocket.accept()
     last_sequence = -1
+    disconnect_task = asyncio.create_task(_wait_for_websocket_disconnect(websocket))
     try:
-        while True:
+        while not disconnect_task.done():
             sequence, sample = runtime.bridge.latest_imu()
             if sample is not None and sequence != last_sequence:
                 await websocket.send_json(sample)
                 last_sequence = sequence
-            await asyncio.sleep(0.01)
+            await asyncio.wait((disconnect_task,), timeout=0.01)
     except (WebSocketDisconnect, RuntimeError):
         return
+    finally:
+        disconnect_task.cancel()
+        await asyncio.gather(disconnect_task, return_exceptions=True)
 
 
 def _attach_websockets(app: FastAPI, runtime: ApplicationRuntime) -> None:

@@ -16,6 +16,41 @@
 - MRDVS IMU SDK 输出单位已经是 `m/s^2` 和 `rad/s`，因此 `fastlio2` 中不再对线加速度额外乘以 10。
 - `pgo` 与 `interface` 来自同一上游仓库的提交 `f516daa`；PGO 同步 FAST-LIO2 的机体系点云和局部里程计，沿用位置候选、ICP、GTSAM/iSAM2 流程，通过 `map -> lio_local` 在线修正全局位姿，并提供优化地图保存服务。
 
+## MRDVS 手持采集网页控制台
+
+`tools/mrdvs_collector` 是面向鲁班猫的独立网页采集工具。部署后源码位于 `/home/cat/mrdvs_collector/app`，虚拟环境、配置、运行状态和数据包分别位于同级 `.venv`、`config`、`state` 和 `bags` 目录，不会写入现有 `/home/cat/mrdvs_ros2_ws` ROS 2 underlay。
+
+工具通过 NetworkManager 创建 `MRDVS-Collector` 热点，在 `http://10.42.0.1` 提供手机优先的网页控制台。初始热点密码为 `12345678`，首版不设置额外网页登录。网页可以启动或停止 MRDVS 原始 LiDAR 驱动、填写自定义数据包名称、选择是否随驱动完整录制、查看三维点云与最近 10 秒 IMU、查看日志，以及下载或二次确认删除已经完成的数据包。可用空间低于 5GB 时会优雅停止录制，避免继续写满磁盘。
+
+采集步骤：
+
+1. 手机连接 `MRDVS-Collector`，打开 `http://10.42.0.1`。
+2. 在“采集”页填写数据包名称；名称支持中文、英文、数字、短横线和下划线。
+3. 需要从驱动启动前开始留存全部数据时，保持“随驱动完整录制全部话题”开启，再点击“启动驱动”。
+4. 采集结束后点击“停止驱动”；系统会先停止驱动，再向 rosbag 发送正常停止信号并等待 MCAP 元数据落盘。
+5. 在“数据包”页下载 `.tar`，或经过同名二次确认后删除。正在录制的数据包禁止下载和删除。
+
+完整录包使用以下固定命令语义，不抽样、不筛选话题、不改写消息字段或驱动时间戳：
+
+```bash
+ros2 bag record --all --include-hidden-topics --storage mcap --output <数据包目录>
+```
+
+网页三维点云最多按 5Hz、每帧 50000 点生成独立显示副本，IMU 最多按 20Hz 显示；这些限制只影响浏览器可视化，不会影响 rosbag 进程，因此 `PointCloud2.header.stamp`、点级 `timestamp`、`Imu.header.stamp` 及驱动启动后的其他普通和隐藏话题都会按 ROS 2 原始消息完整写入。
+
+“下次开机自动启动”开关同时控制热点与网页服务。关闭开关只执行 `systemctl disable mrdvs-collector.target`，不会立即关闭当前热点或中断当前采集。热点连接配置固定为 `connection.autoconnect no`，因此下次开机不再启动采集 target 时，NetworkManager 可以自动连接鲁班猫已经保存且允许自动连接的普通 Wi-Fi。需要通过 SSH 恢复热点和网页服务时执行：
+
+```bash
+sudo systemctl enable --now mrdvs-collector.target
+```
+
+常用服务检查命令：
+
+```bash
+systemctl status mrdvs-collector.target mrdvs-hotspot.service mrdvs-web-console.service
+journalctl -u mrdvs-web-console.service -n 100 --no-pager
+```
+
 ## 代码结构
 
 - `src/lx_camera_ros/`：ROS2 功能包源码。
@@ -33,7 +68,12 @@
 - `src/lx_camera_ros/launch/`：ROS2 launch 文件。
 - `src/lx_camera_ros/rviz/`：RViz 配置。
 - `docs/`：SDK 和定位相关说明文档。
+- `tools/mrdvs_collector/`：独立 FastAPI/WebSocket 采集控制台、离线前端、测试和鲁班猫 systemd/NetworkManager 安装资源。
 - `build/`、`install/`、`log/`：ROS2/colcon 生成目录，不应提交到 Git。
+
+## 更新记录
+
+- 2026-07-22：新增鲁班猫 MRDVS 手持采集网页控制台首版，支持热点、原始驱动控制、完整 MCAP 录包、点云/IMU 显示、数据包下载删除、低磁盘保护和下次开机自启设置。
 
 ## 使用方法
 
