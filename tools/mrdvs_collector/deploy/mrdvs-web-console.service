@@ -1,0 +1,23 @@
+[Unit]
+Description=MRDVS collector web console
+Requires=mrdvs-hotspot.service
+After=mrdvs-hotspot.service
+PartOf=mrdvs-collector.target
+
+[Service]
+Type=simple
+User=cat
+Group=cat
+WorkingDirectory=/home/cat/mrdvs_collector/app
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/cat/mrdvs_collector/app/deploy/run_web_console.sh
+Restart=on-failure
+RestartSec=2
+KillMode=control-group
+TimeoutStopSec=30
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=mrdvs-collector.target

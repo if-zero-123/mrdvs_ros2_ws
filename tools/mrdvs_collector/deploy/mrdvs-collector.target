@@ -1,0 +1,7 @@
+[Unit]
+Description=MRDVS handheld collector
+Wants=mrdvs-hotspot.service mrdvs-web-console.service
+After=NetworkManager.service
+
+[Install]
+WantedBy=multi-user.target
