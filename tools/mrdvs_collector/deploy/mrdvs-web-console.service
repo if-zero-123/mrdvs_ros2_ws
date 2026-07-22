@@ -16,7 +16,6 @@ RestartSec=2
 KillMode=control-group
 TimeoutStopSec=30
 AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=mrdvs-collector.target

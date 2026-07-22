@@ -18,6 +18,7 @@ def test_web_service_is_unprivileged_and_kills_its_control_group():
     assert "After=mrdvs-hotspot.service" in unit
     assert "PartOf=mrdvs-collector.target" in unit
     assert "NoNewPrivileges=yes" not in unit
+    assert "CapabilityBoundingSet=" not in unit
 
 
 def test_hotspot_service_is_tied_to_collector_target():
