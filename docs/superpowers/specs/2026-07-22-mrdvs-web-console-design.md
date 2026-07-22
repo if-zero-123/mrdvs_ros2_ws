@@ -4,7 +4,7 @@
 
 在鲁班猫上部署一个面向手机使用的网页控制台。设备开机后可自动创建 Wi-Fi 热点并启动网页服务，用户通过网页启动或停止 MRDVS 原始驱动、选择是否完整录制全部 ROS 2 话题、查看点云与 IMU、管理和下载数据包，并配置下次开机是否继续自动启动热点与网页服务。
 
-首版只控制 MRDVS 原始驱动，不启动 FAST-LIO2、FAST-LIVO2 或 PGO。代码以本仓库为唯一源文件，在鲁班猫 ARM64 环境构建、安装和验证。
+首版只控制 MRDVS 原始驱动，不启动 FAST-LIO2、FAST-LIVO2 或 PGO。代码以本仓库为唯一源文件，部署到鲁班猫独立目录 `/home/cat/mrdvs_collector`，并在 ARM64 环境安装和验证。
 
 ## 2. 已确认的目标平台
 
@@ -26,14 +26,32 @@
 | 热点地址 | `10.42.0.1/24` |
 | 网页地址 | `http://10.42.0.1` |
 | 雷达 IP | `192.168.100.82` |
-| 数据包根目录 | `/home/cat/bag` |
+| 独立部署根目录 | `/home/cat/mrdvs_collector` |
+| 数据包根目录 | `/home/cat/mrdvs_collector/bags` |
 | 最低剩余空间 | `5GB` |
 | 点云显示上限 | `5Hz`，每帧最多 50000 点 |
 | IMU 显示窗口 | 最近 10 秒，最高 20Hz |
 
 热点密码是用户明确指定并允许记录的初始默认值。项目不生成或提交包含运行时连接密钥的 NetworkManager keyfile；安装过程在鲁班猫上创建实际连接配置。
 
-## 4. 总体架构
+## 4. 独立部署目录
+
+网页采集工具不放入 `/home/cat/mrdvs_ros2_ws`，统一部署在：
+
+```text
+/home/cat/mrdvs_collector/
+├── app/       # 网页后端、静态前端和部署版本信息
+├── .venv/     # FastAPI/Uvicorn 专用 Python 虚拟环境
+├── config/    # 用户可持久化配置
+├── state/     # 运行状态和会话记录
+└── bags/      # rosbag 数据包
+```
+
+程序升级只替换 `app/` 中的受版本管理文件，不删除 `.venv/`、`config/`、`state/` 或 `bags/`。现有 `/home/cat/mrdvs_ros2_ws` 只作为 MRDVS 驱动的 ROS 2 underlay；网页服务启动时加载其 `install/setup.bash`，但网页源码和运行数据不写入该工作空间。
+
+只有 systemd 单元和 NetworkManager 热点连接因 Linux 系统要求保存在系统目录，其他网页项目文件均收敛在上述独立根目录。
+
+## 5. 总体架构
 
 系统采用 Python FastAPI、Uvicorn 和 `rclpy`，前端资源全部随项目本地部署，不依赖互联网。核心组件如下：
 
@@ -46,7 +64,7 @@
 
 网页后端以普通用户 `cat` 运行。只有 NetworkManager 和 systemd 所需的少量操作通过 root 拥有、参数受限的辅助程序执行。
 
-## 5. systemd 与热点生命周期
+## 6. systemd 与热点生命周期
 
 使用以下单元组织开机启动：
 
@@ -60,7 +78,7 @@ NetworkManager 热点连接名为 `mrdvs-hotspot`，设置 `connection.autoconne
 
 网页仅监听 `10.42.0.1:80`。服务仍以普通用户运行，只授予绑定低端口所需的最小 capability，不在雷达网口或普通 Wi-Fi 地址上开放管理页面。
 
-## 6. 驱动与录包状态机
+## 7. 驱动与录包状态机
 
 核心状态为：
 
@@ -88,7 +106,7 @@ ros2 launch lx_camera_ros lx_lidar_ros.launch.py
 
 浏览器断开或刷新不改变后台状态。驱动异常退出时系统自动正常结束录包、保留已写数据、清理残留进程并记录错误。现有 MRDVS 驱动在用户主动关闭时可能返回 `-6`；如果停止动作由用户发起且已确认没有残留进程，该结果按“已停止并带关闭警告”处理，不误判为仍在运行。
 
-## 7. 完整录包约束
+## 8. 完整录包约束
 
 录包使用独立进程执行等价于以下命令的固定参数调用：
 
@@ -107,7 +125,7 @@ ros2 bag record --all --include-hidden-topics --storage mcap --output <安全目
 
 录制期间持续检查数据包写入状态和文件系统剩余空间。可用空间低于 5GB 时，系统向 rosbag 发送正常停止信号、等待元数据落盘，并显示明确告警。突然断电无法保证最后一小段缓存数据，但 MCAP 文件应保留并可使用 ROS 2 工具检查或重建索引。
 
-## 8. 数据包命名、下载与删除
+## 9. 数据包命名、下载与删除
 
 用户必须在网页中填写数据包名称，不自动使用时间戳替代。名称规则如下：
 
@@ -117,11 +135,11 @@ ros2 bag record --all --include-hidden-topics --storage mcap --output <安全目
 - 禁止 `/`、反斜杠、`..`、控制字符和路径分隔符；
 - 已存在同名目录时拒绝覆盖。
 
-默认保存路径为 `/home/cat/bag/<用户名称>/`。数据包根目录可以在设置页修改，但后端只允许使用已配置并通过权限、可写性和空间检查的绝对目录。所有列表、下载和删除操作都在解析真实路径后再次确认目标仍位于该根目录内。
+默认保存路径为 `/home/cat/mrdvs_collector/bags/<用户名称>/`。数据包根目录可以在设置页修改，但后端只允许使用已配置并通过权限、可写性和空间检查的绝对目录。所有列表、下载和删除操作都在解析真实路径后再次确认目标仍位于该根目录内。
 
 数据包页面显示名称、状态、大小、持续时间和创建时间。完成的数据包通过 HTTP 实时打包为 `.tar` 流下载，不在鲁班猫上额外生成同等大小的压缩副本。正在录制的数据包禁止下载和删除。删除操作需要二次确认，并再次核对当前状态和真实路径。
 
-## 9. 实时可视化与页面布局
+## 10. 实时可视化与页面布局
 
 页面采用手机优先的响应式布局，包含：
 
@@ -135,7 +153,7 @@ ros2 bag record --all --include-hidden-topics --storage mcap --output <安全目
 
 点云桥按每帧最多 50000 点、最高 5Hz 下采样并发送紧凑二进制数据。IMU 最高 20Hz 推送，浏览器只保留最近 10 秒。所有前端 JavaScript、字体和图形资源本地提供，连接热点后无需互联网。
 
-## 10. 安全与故障处理
+## 11. 安全与故障处理
 
 - 不设置网页登录，访问边界依赖 WPA2 热点；后端同时限制监听地址、Origin 和允许的 API 参数。
 - 不使用 `shell=True` 拼接用户输入；驱动和录包均通过参数数组启动。
@@ -146,9 +164,9 @@ ros2 bag record --all --include-hidden-topics --storage mcap --output <安全目
 - API 返回结构化错误码和中文错误信息；页面显示可操作的恢复建议及有限长度日志。
 - 热点启动失败时退出采集 target，并允许 NetworkManager 恢复普通 Wi-Fi。
 
-## 11. 代码边界
+## 12. 代码边界
 
-新增独立 ROS 2 Python 包 `mrdvs_web_console`，不把网页逻辑写入现有 C++ 驱动。包内按职责拆分：
+新增独立 Python 应用包 `mrdvs_web_console`，不把网页逻辑写入现有 C++ 驱动，也不把网页项目安装进现有 ROS 2 工作空间。应用通过系统 ROS 2 环境和现有工作空间 underlay 使用 `rclpy`、消息类型及驱动 launch。包内按职责拆分：
 
 - 配置与输入校验；
 - 驱动/录包进程管理；
@@ -159,9 +177,9 @@ ros2 bag record --all --include-hidden-topics --storage mcap --output <安全目
 - systemd、NetworkManager 和安装资源；
 - 单元、API 和 ROS 集成测试。
 
-FastAPI/Uvicorn 安装到鲁班猫专用 Python 虚拟环境，并通过 `--system-site-packages` 使用系统 ROS 2 的 `rclpy`。构建产物、虚拟环境、运行日志、热点密码和数据包不提交 Git。
+FastAPI/Uvicorn 安装到 `/home/cat/mrdvs_collector/.venv`，并通过 `--system-site-packages` 使用系统 ROS 2 的 `rclpy`。应用部署到 `/home/cat/mrdvs_collector/app`。虚拟环境、运行状态、运行日志、热点运行配置和数据包不提交 Git。
 
-## 12. 部署与验收
+## 13. 部署与验收
 
 部署前先验证本机可通过鲁班猫有线地址 `192.168.100.100` 建立 SSH 备用通道，再切换 `wlan0` 到 AP，避免热点测试导致远程失联。
 
@@ -179,6 +197,6 @@ FastAPI/Uvicorn 安装到鲁班猫专用 Python 虚拟环境，并通过 `--syst
 10. 自启与恢复：启用时重启可恢复热点和网页；网页关闭下次自启后重启会连接已保存普通 Wi-Fi，并可通过 SSH 恢复采集 target。
 11. 清理：测试结束后没有残留驱动、rosbag 或临时测试进程。
 
-## 13. 非目标
+## 14. 非目标
 
 首版不包含 FAST-LIO2、FAST-LIVO2、PGO 的启动控制，不提供公网访问、多用户权限、云端上传、在线修改 ROS 消息、自动删除旧数据包或视频转码。后续功能通过新的设计与实施阶段扩展。
