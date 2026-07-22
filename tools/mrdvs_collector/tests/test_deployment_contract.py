@@ -50,8 +50,12 @@ def test_sudoers_allows_only_the_fixed_helper():
 
 def test_wrapper_sources_ros_and_uses_the_standalone_root():
     wrapper = read("run_web_console.sh")
+    assert "set -eo pipefail" in wrapper
     assert "source /opt/ros/jazzy/setup.bash" in wrapper
     assert "source /home/cat/mrdvs_ros2_ws/install/setup.bash" in wrapper
+    assert wrapper.index("source /home/cat/mrdvs_ros2_ws/install/setup.bash") < wrapper.index(
+        "set -u"
+    )
     assert "MRDVS_COLLECTOR_ROOT=/home/cat/mrdvs_collector" in wrapper
     assert "exec /home/cat/mrdvs_collector/.venv/bin/mrdvs-web-console" in wrapper
 
