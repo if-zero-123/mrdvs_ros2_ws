@@ -170,6 +170,13 @@ class CollectorController:
             self._watch(self._monitor_driver(process))
             return self.snapshot()
 
+    async def reconfigure(self, config: AppConfig, bags: BagManager) -> None:
+        async with self._lock:
+            if self._driver is not None or self._recording is not None:
+                raise CollectorConflict("驱动或录制运行时不能修改采集配置")
+            self.config = config
+            self._bags = bags
+
     async def start_recording(self, bag_name: str) -> RuntimeSnapshot:
         async with self._lock:
             await self._start_recording_locked(bag_name, require_driver=True)

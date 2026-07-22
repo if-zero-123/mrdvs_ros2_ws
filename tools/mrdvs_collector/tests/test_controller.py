@@ -211,3 +211,28 @@ def test_exact_command_factories(tmp_path: Path):
         "--output",
         str(tmp_path / "bags" / "room1"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_updates_next_driver_and_bag_settings_only_when_idle(
+    tmp_path: Path,
+):
+    controller, runner, _ = make_controller(tmp_path)
+    new_config = AppConfig(
+        deploy_root=tmp_path,
+        bag_root=tmp_path / "new-bags",
+        state_root=tmp_path / "new-state",
+        radar_ip="192.168.100.83",
+        min_free_bytes=1,
+    )
+    new_bags = BagManager(
+        new_config.bag_root, new_config.state_root, new_config.min_free_bytes
+    )
+
+    await controller.reconfigure(new_config, new_bags)
+    await controller.start_driver(record=False, bag_name=None)
+
+    assert "ip:=192.168.100.83" in runner.commands[-1][1]
+    with pytest.raises(CollectorConflict):
+        await controller.reconfigure(new_config, new_bags)
+    await controller.shutdown()

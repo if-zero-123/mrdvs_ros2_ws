@@ -186,6 +186,15 @@ class RosBridge:
         with self._lock:
             return self._cloud_sequence, self._latest_cloud
 
+    def reconfigure(self, config: AppConfig) -> None:
+        with self._lock:
+            history_size = max(
+                1, math.ceil(config.imu_window_seconds * config.imu_max_hz) + 1
+            )
+            newest_samples = list(self._imu_history)[-history_size:]
+            self.config = config
+            self._imu_history = deque(newest_samples, maxlen=history_size)
+
     def latest_imu(self) -> tuple[int, dict[str, Any] | None]:
         with self._lock:
             return self._imu_sequence, copy.deepcopy(self._latest_imu)

@@ -158,3 +158,27 @@ def test_bridge_start_and_stop_are_idempotent(tmp_path):
     bridge.stop()
     bridge.stop()
     assert bridge.running is False
+
+
+def test_bridge_reconfigure_updates_limits_and_keeps_newest_imu_samples(tmp_path):
+    now = [300.0]
+    initial = AppConfig(
+        deploy_root=tmp_path,
+        bag_root=tmp_path / "bags",
+        state_root=tmp_path / "state",
+        imu_max_hz=20,
+        imu_window_seconds=0.2,
+    )
+    bridge = RosBridge(initial, monotonic_clock=lambda: now[0])
+    for index in range(5):
+        bridge.handle_imu(make_imu(30, index, float(index)))
+        now[0] += 0.05
+    updated = initial.model_copy(
+        update={"imu_max_hz": 10.0, "imu_window_seconds": 0.1}
+    )
+
+    bridge.reconfigure(updated)
+
+    assert bridge.config == updated
+    assert len(bridge.imu_history()) == 2
+    assert bridge.imu_history()[-1]["linear_acceleration"]["x"] == 4.0
