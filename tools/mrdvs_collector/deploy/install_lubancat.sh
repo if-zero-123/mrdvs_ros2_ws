@@ -26,7 +26,13 @@ sudo chown -R cat:cat \
   "$app_dir" "$collector_root/config" "$collector_root/state" "$collector_root/bags"
 
 python3 -m venv --system-site-packages "$collector_root/.venv"
-"$collector_root/.venv/bin/python" -m pip install "$app_dir[test]"
+if ! "$collector_root/.venv/bin/python" -m pip install "$app_dir[test]"; then
+  printf 'Python 依赖通过当前网络环境安装失败，改用直连重试。\n' >&2
+  env -u ALL_PROXY -u all_proxy \
+    -u HTTP_PROXY -u http_proxy \
+    -u HTTPS_PROXY -u https_proxy \
+    "$collector_root/.venv/bin/python" -m pip install "$app_dir[test]"
+fi
 
 sudo install -d -o root -g root -m 0755 /usr/local/libexec
 sudo install -o root -g root -m 0755 \
