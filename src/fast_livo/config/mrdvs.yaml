@@ -47,8 +47,8 @@
 
     imu:
       imu_en: true
-      imu_int_frame: 600
-      stationary_init_en: true
+      imu_int_frame: 30
+      stationary_init_en: false
       imu_init_max_gyr_norm: 0.10
       imu_init_acc_norm_tolerance: 0.75
       # MRDVS IMU Allan calibration, avg-axis.
