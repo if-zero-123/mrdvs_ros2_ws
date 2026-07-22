@@ -1,2 +1,0 @@
-[console_scripts]
-mrdvs-web-console = mrdvs_web_console.main:main
