@@ -2,7 +2,8 @@ from pathlib import Path
 import tomllib
 
 
-PYPROJECT = Path("tools/mrdvs_collector/pyproject.toml")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PYPROJECT = PROJECT_ROOT / "pyproject.toml"
 
 
 def test_runtime_dependencies_include_uvicorn_websocket_backend():

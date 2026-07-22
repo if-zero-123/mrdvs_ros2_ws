@@ -1,7 +1,8 @@
 from pathlib import Path
 
 
-DEPLOY = Path("tools/mrdvs_collector/deploy")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEPLOY = PROJECT_ROOT / "deploy"
 
 
 def read(name: str) -> str:

@@ -2,7 +2,8 @@ from pathlib import Path
 import re
 
 
-STATIC = Path("tools/mrdvs_collector/src/mrdvs_web_console/static")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+STATIC = PROJECT_ROOT / "src" / "mrdvs_web_console" / "static"
 
 
 def read(path: str) -> str:

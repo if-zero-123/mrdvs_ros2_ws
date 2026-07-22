@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 
 
-HELPER_PATH = Path("tools/mrdvs_collector/deploy/mrdvs_system_helper.py")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+HELPER_PATH = PROJECT_ROOT / "deploy" / "mrdvs_system_helper.py"
 SPEC = importlib.util.spec_from_file_location("mrdvs_system_helper", HELPER_PATH)
 assert SPEC is not None and SPEC.loader is not None
 HELPER = importlib.util.module_from_spec(SPEC)
@@ -78,4 +79,3 @@ def test_enabling_autostart_uses_only_the_allow_listed_target(monkeypatch):
     monkeypatch.setattr(HELPER.subprocess, "run", fake_run)
     assert HELPER.set_autostart(True) == {"enabled": True, "applies": "next_boot"}
     assert calls == [["systemctl", "enable", "mrdvs-collector.target"]]
-
