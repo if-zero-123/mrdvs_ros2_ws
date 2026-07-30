@@ -16,39 +16,383 @@
 - MRDVS IMU SDK 输出单位已经是 `m/s^2` 和 `rad/s`，因此 `fastlio2` 中不再对线加速度额外乘以 10。
 - `pgo` 与 `interface` 来自同一上游仓库的提交 `f516daa`；PGO 同步 FAST-LIO2 的机体系点云和局部里程计，沿用位置候选、ICP、GTSAM/iSAM2 流程，通过 `map -> lio_local` 在线修正全局位姿，并提供优化地图保存服务。
 
-## MRDVS 手持采集网页控制台
+## MRDVS 手持数据网页采集程序
 
-`tools/mrdvs_collector` 是面向鲁班猫的独立网页采集工具。部署后源码位于 `/home/cat/mrdvs_collector/app`，虚拟环境、配置、运行状态和数据包分别位于同级 `.venv`、`config`、`state` 和 `bags` 目录，不会写入现有 `/home/cat/mrdvs_ros2_ws` ROS 2 underlay。
+### 程序介绍
 
-工具通过 NetworkManager 创建 `MRDVS-Collector` 热点，在 `http://10.42.0.1` 提供手机优先的网页控制台。初始热点密码为 `12345678`，首版不设置额外网页登录。网页可以启动或停止 MRDVS 原始 LiDAR 驱动、填写自定义数据包名称、选择是否随驱动完整录制、查看三维点云与最近 10 秒 IMU、查看日志，以及下载或二次确认删除已经完成的数据包。可用空间低于 5GB 时会优雅停止录制，避免继续写满磁盘。
+`tools/mrdvs_collector` 是部署在鲁班猫上的手机端 ROS 2 数据采集控制台。设备在无路由器、无显示器的现场也能创建独立 Wi-Fi 热点，操作者连接热点后即可通过浏览器完成以下工作：
 
-采集步骤：
+- 启动和停止一个 ROS 2 设备驱动；
+- 在启动驱动前预先开启 rosbag，完整录制驱动会话中的全部普通和隐藏话题；
+- 自定义数据包名称，不覆盖同名数据；
+- 查看原始话题频率、三维点云显示副本和最近 10 秒 IMU 曲线；
+- 查看有限长度的驱动、rosbag 和系统日志；
+- 下载或二次确认删除已经完成的数据包；
+- 设置热点、设备参数、数据目录，以及下次开机是否自动启动热点和网页；
+- 在剩余空间低于 5GB 时优雅停止 rosbag，等待 MCAP 元数据落盘。
 
-1. 手机连接 `MRDVS-Collector`，打开 `http://10.42.0.1`。
-2. 在“采集”页填写数据包名称；名称支持中文、英文、数字、短横线和下划线。
-3. 需要从驱动启动前开始留存全部数据时，保持“随驱动完整录制全部话题”开启，再点击“启动驱动”。
-4. 采集结束后点击“停止驱动”；系统会先停止驱动，再向 rosbag 发送正常停止信号并等待 MCAP 元数据落盘。
-5. 在“数据包”页下载 `.tar`，或经过同名二次确认后删除。正在录制的数据包禁止下载和删除。
+首版已经接入 MRDVS LiDAR 驱动，但控制器的核心职责是“拉起一个设备驱动并完整录包”。文档后面的[通用设备驱动接入与 AI 修改规则](#通用设备驱动接入与-ai-修改规则)说明了如何替换为其他 ROS 2 设备驱动。点云和 IMU 可视化是可选适配，不是完整录包的前提。
 
-完整录包使用以下固定命令语义，不抽样、不筛选话题、不改写消息字段或驱动时间戳：
+### 系统组成与数据流
 
-```bash
-ros2 bag record --all --include-hidden-topics --storage mcap --output <数据包目录>
+```text
+手机浏览器
+  ├─ REST API：驱动、录包、数据包、设置和日志控制
+  └─ WebSocket：经过限频/限点的点云与 IMU 显示副本
+                         │
+                         ▼
+                mrdvs-web-console（cat 用户）
+                  ├─ 设备驱动子进程
+                  ├─ ros2 bag record 子进程 ──► 完整 MCAP 数据包
+                  └─ rclpy 只读订阅 ──────────► 网页显示副本
 ```
 
-网页三维点云最多按 5Hz、每帧 50000 点生成独立显示副本，IMU 最多按 20Hz 显示；这些限制只影响浏览器可视化，不会影响 rosbag 进程，因此 `PointCloud2.header.stamp`、点级 `timestamp`、`Imu.header.stamp` 及驱动启动后的其他普通和隐藏话题都会按 ROS 2 原始消息完整写入。
+rosbag 子进程和网页可视化桥相互独立。浏览器断开、显示限频或丢弃旧显示帧都不会给 rosbag 施加采样或背压。
 
-“下次开机自动启动”开关同时控制热点与网页服务。关闭开关只执行 `systemctl disable mrdvs-collector.target`，不会立即关闭当前热点或中断当前采集。热点连接配置固定为 `connection.autoconnect no`，因此下次开机不再启动采集 target 时，NetworkManager 可以自动连接鲁班猫已经保存且允许自动连接的普通 Wi-Fi。需要通过 SSH 恢复热点和网页服务时执行：
+### 实际页面
+
+以下截图来自鲁班猫上实际运行的移动端页面。截图时未开始新的录制；实时页保留了最近一次设备数据的显示帧。
+
+<table>
+  <tr>
+    <th>采集控制与运行日志</th>
+    <th>点云与 IMU 实时数据</th>
+  </tr>
+  <tr>
+    <td><img src="docs/images/mrdvs_collector/01-collection.png" alt="采集控制页面" width="360"></td>
+    <td><img src="docs/images/mrdvs_collector/02-live-data.png" alt="点云和 IMU 实时页面" width="360"></td>
+  </tr>
+  <tr>
+    <th>数据包管理</th>
+    <th>设备设置</th>
+  </tr>
+  <tr>
+    <td><img src="docs/images/mrdvs_collector/03-bags.png" alt="数据包管理页面" width="360"></td>
+    <td><img src="docs/images/mrdvs_collector/04-settings.png" alt="设备设置页面" width="360"></td>
+  </tr>
+</table>
+
+### 鲁班猫部署结构
+
+网页程序与 ROS 2 工作空间分开部署，避免运行数据污染驱动源码：
+
+```text
+/home/cat/mrdvs_collector/
+├── app/       # 从本仓库 tools/mrdvs_collector 同步的应用源码
+├── .venv/     # Python 虚拟环境，通过 system-site-packages 使用 rclpy
+├── config/    # 持久化设置
+├── state/     # 数据包状态等运行状态
+└── bags/      # 默认 MCAP 数据包根目录
+
+/home/cat/mrdvs_ros2_ws/
+└── install/   # 当前 MRDVS 驱动 ROS 2 underlay
+```
+
+默认网络如下：
+
+| 用途 | 接口或地址 | 说明 |
+| --- | --- | --- |
+| 手机热点 | `wlan0` / `10.42.0.1` | SSID `MRDVS-Collector`，初始密码 `12345678` |
+| USB 网口 SSH/导出 | `eth1` / `192.168.100.100` | 电脑端当前使用 `192.168.100.99` |
+| 板载设备网口 | `eth0` / `192.168.100.66` | 当前 MRDVS 设备地址为 `192.168.100.82` |
+| 网页 | `http://10.42.0.1` | 仅监听热点地址的 80 端口 |
+
+### 首次部署或更新
+
+先通过 USB 网口把应用同步到独立目录，不复制本机的虚拟环境、Node.js 依赖或缓存：
+
+```bash
+ssh cat@192.168.100.100 'mkdir -p /home/cat/mrdvs_collector/app'
+
+rsync -avh --delete \
+  --exclude='.venv/' \
+  --exclude='node_modules/' \
+  --exclude='.pytest_cache/' \
+  --exclude='__pycache__/' \
+  --exclude='*.egg-info/' \
+  tools/mrdvs_collector/ \
+  cat@192.168.100.100:/home/cat/mrdvs_collector/app/
+```
+
+再在鲁班猫上执行幂等安装器：
+
+```bash
+ssh -t cat@192.168.100.100
+cd /home/cat/mrdvs_collector/app
+bash deploy/install_lubancat.sh
+```
+
+安装器创建 ARM64 虚拟环境、安装 Python 包、校验 sudoers、安装 systemd 单元、创建热点配置并启用下次开机自启；它不会在安装过程中立即切换当前网络。更新应用后可执行 `sudo systemctl restart mrdvs-web-console.service` 加载新版本。
+
+### 开机和访问网页
+
+正常情况下，`mrdvs-collector.target` 会在开机时同时启动热点和网页：
+
+1. 给鲁班猫和传感器上电，等待系统启动。
+2. 手机连接 `MRDVS-Collector`。
+3. 输入热点密码 `12345678`。
+4. 浏览器打开 `http://10.42.0.1`。
+5. 页面右上角显示“服务在线”后再开始操作。
+
+通过 USB 网口检查服务：
+
+```bash
+ssh cat@192.168.100.100
+systemctl status \
+  mrdvs-collector.target \
+  mrdvs-hotspot.service \
+  mrdvs-web-console.service
+```
+
+需要恢复并同时设置下次开机自启：
 
 ```bash
 sudo systemctl enable --now mrdvs-collector.target
 ```
 
-常用服务检查命令：
+只启动本次、不改变下次开机设置：
 
 ```bash
-systemctl status mrdvs-collector.target mrdvs-hotspot.service mrdvs-web-console.service
+sudo systemctl start mrdvs-collector.target
+```
+
+### 完整采集流程
+
+1. 打开“采集”页，在“数据包名称”中填写本次任务名称。
+2. 名称允许中文、英文字母、数字、短横线和下划线，最长 80 个字符；禁止路径分隔符、`.`、`..`、控制字符和同名覆盖。
+3. 需要从驱动启动时刻完整留存数据时，勾选“随驱动完整录制全部话题”。
+4. 点击“启动驱动”。后端会先启动 rosbag，再启动设备驱动，避免遗漏驱动最初发布的话题。
+5. 确认驱动和录制状态均正常；根据需要查看实时数据和日志。
+6. 采集结束点击“停止驱动”。后端先停止驱动，再向 rosbag 发送 SIGINT 并等待 MCAP 元数据写完。
+7. 进入“数据包”页检查名称、大小、状态和时长。
+
+如果只启动了驱动，也可以在驱动运行期间填写包名后单独点击“开始录制”和“停止录制”。推荐现场采集使用“随驱动完整录制”，这样更不容易遗漏启动阶段数据。
+
+### 完整录包与网页显示的区别
+
+完整录包固定使用：
+
+```bash
+ros2 bag record \
+  --all \
+  --include-hidden-topics \
+  --storage mcap \
+  --output <安全的数据包目录>
+```
+
+该命令不抽样、不限定话题列表、不修改消息字段，也不改写驱动时间戳。对于当前 MRDVS 驱动，会保留 `PointCloud2.header.stamp`、点级 `timestamp`、`Imu.header.stamp`、图像及驱动发布的其他消息。
+
+页面中不同频率的含义：
+
+| 页面数据 | 含义 |
+| --- | --- |
+| 顶部“点云 Hz / IMU Hz” | rclpy 订阅端收到的原始话题频率，在显示限频前统计，采用约 2 秒滑动窗口 |
+| 点云卡片中的 FPS | 浏览器收到并渲染的实际显示频率，最高 5FPS |
+| 点云显示点数 | 显示副本每帧最多 50000 点 |
+| IMU 曲线 | 显示副本最高 20Hz，只保留最近 10 秒 |
+| MCAP 数据包 | 独立 rosbag 进程收到的完整消息，不受上述显示限制影响 |
+
+### 数据包保存、下载和 USB 导出
+
+默认保存目录：
+
+```text
+/home/cat/mrdvs_collector/bags/<网页填写的数据包名称>/
+```
+
+网页下载会实时生成 tar 流，不会在鲁班猫上额外创建一份同等大小的压缩文件。大包更推荐通过 USB 网口使用 rsync，支持进度显示和中断后继续：
+
+```bash
+mkdir -p ~/MRDVS_bags
+
+rsync -avhs --partial --info=progress2 \
+  cat@192.168.100.100:/home/cat/mrdvs_collector/bags/ \
+  ~/MRDVS_bags/
+```
+
+只导出指定数据包：
+
+```bash
+rsync -avhs --partial --info=progress2 \
+  'cat@192.168.100.100:/home/cat/mrdvs_collector/bags/数据包名称/' \
+  ~/MRDVS_bags/数据包名称/
+```
+
+正在录制的数据包禁止下载和删除。网页删除需要输入完整数据包名称二次确认；删除后不可恢复。
+
+### 设置、自启和恢复
+
+“设置”页可以修改雷达 IP、IMU 量程、数据包根目录、热点名称和密码。热点名称或密码修改后在下一次热点启动时应用。
+
+“下次开机自动启动热点和网页”只控制下一次启动：
+
+- 关闭开关不会立即停止当前热点或网页，也不会中断当前采集；
+- 关闭后再次开机不会启动采集 target，热点配置本身设置为 `connection.autoconnect no`；
+- 鲁班猫可以恢复连接已经保存并允许自动连接的普通 Wi-Fi；
+- 已经重启且网页不可用时，通过 USB SSH 执行恢复命令即可。
+
+网页正常但需要单独重启：
+
+```bash
+sudo systemctl restart mrdvs-web-console.service
+```
+
+查看最近日志：
+
+```bash
 journalctl -u mrdvs-web-console.service -n 100 --no-pager
+```
+
+### 常见问题
+
+| 现象 | 检查和处理 |
+| --- | --- |
+| 手机找不到热点 | USB SSH 后检查 `systemctl status mrdvs-hotspot.service`，必要时启动 `mrdvs-collector.target` |
+| 热点能连接但网页打不开 | 检查 `mrdvs-web-console.service` 和 `ss -ltnp | grep ':80 '` |
+| 点击启动后驱动变为异常 | 查看网页日志；在鲁班猫上手动执行对应 `ros2 launch ... --show-args` 检查包、launch 和参数 |
+| 顶部仍显示最近频率 | 顶部频率来自 rclpy 最近接收窗口；以驱动状态、话题年龄和新消息是否持续到达综合判断 |
+| 点云 FPS 低于原始 Hz | 正常，网页点云最高 5FPS；完整 rosbag 不限频 |
+| 录制自动停止 | 检查剩余空间；低于 5GB 时系统会主动停止录制 |
+| 数据包不能下载或删除 | 正在录制的包受保护，先正常停止录制 |
+| USB SSH 不通 | 电脑检查 `192.168.100.99/24`，鲁班猫 USB 网口地址为 `192.168.100.100/24` |
+
+### 通用设备驱动接入与 AI 修改规则
+
+本节是交给其他 AI 或开发人员的强制修改契约。目标是安装一个新的 ROS 2 设备驱动，让网页能够拉起和停止它，并完整录制驱动会话中的全部话题。除非用户明确提出新功能，不应把一次驱动替换扩展成前端重写或录包架构重构。
+
+#### 新驱动必须满足的运行契约
+
+1. 驱动必须能通过固定的参数数组启动，例如 `ros2 launch <package> <launch_file> ...`。
+2. 驱动必须以前台进程运行，不能自行 daemonize；主进程退出必须能表示驱动会话结束。
+3. 驱动及其子进程必须响应 SIGINT 或 SIGTERM，使控制器能够按进程组停止。
+4. 无显示器运行时必须关闭 RViz、GUI 和交互式提示。
+5. 驱动必须在网页服务所加载的 ROS_DOMAIN_ID 和 RMW 环境中发布话题。
+6. 驱动启动失败必须返回非零状态并输出可诊断日志，不能静默退出。
+7. 消息时间戳和字段由驱动负责，采集器不得为“看起来同步”而重写原始数据。
+8. 点云或 IMU 不是必选项。没有这两类话题时，实时页可以显示无数据，但启动、停止和完整录包仍必须正常。
+
+#### 不允许破坏的采集边界
+
+- 不得把 `bag_command()` 改成固定话题列表、正则过滤、抽样录制或消息转换节点。
+- 必须保留 `--all --include-hidden-topics --storage mcap`。
+- 同时录制时必须先启动 rosbag，再启动驱动。
+- 停止驱动会话时必须先停止驱动，再优雅停止 rosbag 并等待元数据写完。
+- 网页显示订阅只能读取显示副本，不能发布回原话题、修改源消息或阻塞 rosbag。
+- 不得使用 `shell=True`、拼接用户输入或让网页直接执行任意命令。
+- 不得放宽数据包名称、真实路径、活动包下载/删除和 5GB 磁盘保护。
+- 不得把驱动的 root 权限加入网页服务；需要系统权限时必须使用新的固定白名单 helper 子命令并单独审查。
+
+#### 接入前必须向用户收集的信息
+
+```text
+驱动源码或安装包位置：
+目标架构和 ROS 2 发行版：
+ROS 2 package 名称：
+launch 文件名称：
+需要传入的 launch 参数及默认值：
+驱动工作空间 setup.bash 路径：
+设备连接方式、设备 IP 或串口：
+预期话题名称、消息类型和大致频率：
+时间戳单位、时钟来源和点级时间字段：
+是否需要点云/IMU/图像网页可视化：
+安全停止方式和预计停止耗时：
+```
+
+信息不全时，AI 应先通过只读命令检查驱动的 `package.xml`、launch、参数声明和实际话题，不能猜测包名、参数或字段布局。
+
+#### 推荐修改顺序
+
+1. **安装并验证驱动**：在鲁班猫 ARM64 上构建驱动，单独运行成功后再接入网页。外部工作空间建议放在 `/home/cat/<device>_ros2_ws`，不要安装到 `/home/cat/mrdvs_collector` 的运行数据目录。
+2. **加载驱动环境**：在 `tools/mrdvs_collector/deploy/run_web_console.sh` 中 source 新驱动的 `install/setup.bash`。必须在启用 Bash `set -u` 前加载 ROS setup。
+3. **替换启动命令**：修改 `tools/mrdvs_collector/src/mrdvs_web_console/controller.py` 中的 `driver_command(config)`，只返回字符串参数列表。
+4. **增加必要配置**：只有驱动确实需要网页配置时，才依次修改 `models.py`、`schemas.py`、`api.py` 和设置页面；固定参数不要无意义地暴露给现场用户。
+5. **可选适配可视化**：如果话题名或消息类型不同，修改 `ros_bridge.py` 的订阅和解码；没有对应数据时可以禁用该可视化，不得影响录包。
+6. **更新测试**：先修改或增加失败测试，再改实现；至少覆盖精确启动命令、进程停止、完整 bag 命令、话题解码和 API 状态。
+7. **本机验证**：运行应用测试、Python/JavaScript/shell 语法检查和 wheel 构建。
+8. **板端部署**：同步 `tools/mrdvs_collector/` 到 `/home/cat/mrdvs_collector/app/`，重新安装应用并重启网页服务。
+9. **真机验收**：验证驱动进程、实际话题、网页状态、完整 MCAP、时间戳和无残留子进程。
+
+最小启动命令模板：
+
+```python
+def driver_command(config: AppConfig) -> list[str]:
+    return [
+        "ros2",
+        "launch",
+        "your_device_driver",
+        "device.launch.py",
+        f"device_ip:={config.device_ip}",
+        "enable_rviz:=false",
+    ]
+```
+
+禁止写成：
+
+```python
+# 错误：用户输入会进入 shell，无法可靠管理进程组。
+return ["bash", "-lc", f"ros2 launch your_device_driver device.launch.py {user_text}"]
+```
+
+#### 必须修改或检查的文件
+
+| 文件 | 何时修改 | 必须保持的约束 |
+| --- | --- | --- |
+| `deploy/run_web_console.sh` | 新驱动位于新的 ROS 工作空间 | ROS setup 在 `set -u` 前加载；最终使用 `exec` 启动网页 |
+| `src/mrdvs_web_console/controller.py` | 所有驱动替换 | `driver_command()` 使用参数数组；状态机和 rosbag 顺序不变 |
+| `src/mrdvs_web_console/models.py` | 新驱动需要可配置参数 | Pydantic 范围校验、默认值和持久化兼容 |
+| `src/mrdvs_web_console/ros_bridge.py` | 需要适配新的实时可视化 | 限频只作用于显示副本；原消息只读 |
+| `src/mrdvs_web_console/schemas.py`、`api.py` | 新参数需要通过网页修改 | 固定 API、结构化错误、禁止返回密码 |
+| `static/` | 用户确实需要新的设置或可视化 | 移动端可用、资源离线、不引用 CDN |
+| `tests/` | 每次替换都必须更新 | 测试先失败、实现后通过，覆盖命令和契约而非只测 mock 调用次数 |
+
+#### 驱动替换验收清单
+
+```bash
+# 1. 驱动包和 launch 可发现
+source /opt/ros/jazzy/setup.bash
+source /home/cat/<device>_ros2_ws/install/setup.bash
+ros2 pkg prefix <driver_package>
+ros2 launch <driver_package> <launch_file> --show-args
+
+# 2. 通过网页启动后核对进程和话题
+pgrep -af '<driver_process>|ros2 bag record'
+ros2 topic list -t
+ros2 topic hz <primary_topic>
+
+# 3. 停止后核对 MCAP 和残留进程
+ros2 bag info /home/cat/mrdvs_collector/bags/<bag_name>
+pgrep -af '<driver_process>|ros2 bag record' || true
+
+# 4. 应用回归测试
+cd /home/cat/mrdvs_collector
+source /opt/ros/jazzy/setup.bash
+.venv/bin/python -m pytest app/tests -q
+```
+
+验收必须确认：预期话题都进入 MCAP、消息数量与频率/时长合理、关键字段存在、header 和设备时间戳未被修改、停止后 `metadata.yaml` 存在、驱动和 rosbag 均无残留。
+
+#### 可直接交给其他 AI 的任务模板
+
+```text
+请在 /home/zero/mrdvs_ros2_ws 中，把 tools/mrdvs_collector 当前的设备驱动
+替换为以下 ROS 2 驱动，同时保留网页启动/停止和完整 MCAP 录包能力：
+
+- 驱动源码或安装位置：<填写>
+- ROS 2 package：<填写>
+- launch 文件：<填写>
+- launch 参数：<填写>
+- setup.bash：<填写>
+- 设备连接/IP/串口：<填写>
+- 主要话题、类型、频率：<填写>
+- 时间戳语义：<填写>
+- 需要的网页可视化：<填写；无则写“无需新增”>
+
+开始前必须阅读 AGENTS.md、README.md、现有 controller.py、ros_bridge.py、
+processes.py、API 和相关测试。先用只读命令验证驱动契约，提出具体修改范围并确认。
+实现时使用参数数组，禁止 shell=True；不得修改完整录包命令、启动/停止顺序、
+路径安全、活动包保护和低磁盘保护。新行为必须先写失败测试，再实现并运行全量测试。
+在 ARM64 鲁班猫上验证 launch、话题、MCAP、时间戳和无残留进程。
+每个可运行阶段单独 Git 提交，不要混入无关改动。
 ```
 
 ## 代码结构
@@ -73,6 +417,7 @@ journalctl -u mrdvs-web-console.service -n 100 --no-pager
 
 ## 更新记录
 
+- 2026-07-30：完善网页采集程序介绍、真实页面截图、现场使用与 USB 数据导出说明，并增加通用 ROS 2 设备驱动接入和 AI 修改规则。
 - 2026-07-22：新增鲁班猫 MRDVS 手持采集网页控制台首版，支持热点、原始驱动控制、完整 MCAP 录包、点云/IMU 显示、数据包下载删除、低磁盘保护和下次开机自启设置。
 
 ## 使用方法
