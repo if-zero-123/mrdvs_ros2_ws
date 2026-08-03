@@ -122,15 +122,12 @@ cleanup_stale_sessions() {
     "旧 rosbag" \
     "ros2 bag record --storage mcap --output ${bag_root}"
   stop_matching_processes \
-    "旧 LiDAR 启动进程" \
-    "ros2 launch lx_camera_ros lx_lidar_ros.launch.py ip:=192.168.100.82"
-  stop_matching_processes \
-    "旧 MRDVS 驱动节点" \
-    "/lib/lx_camera_ros/lx_camera_node"
+    "旧录制脚本 wrapper" \
+    "record_mrdvs_sensor_bag.sh"
 }
 
 run_in_new_session() {
-  setsid bash -c 'trap - INT TERM; exec "$@"' _ "$@"
+  exec setsid bash -c 'trap - INT TERM; exec "$@"' _ "$@"
 }
 
 bag_root="${MRDVS_BAG_ROOT:-/home/zero/MRDVS_bags}"
@@ -142,7 +139,6 @@ fi
 mkdir -p "$bag_root"
 
 bag_pid=""
-driver_pid=""
 cleanup_stale_sessions
 
 cleanup() {
@@ -153,12 +149,6 @@ cleanup() {
     echo "正在停止 rosbag 并写入 MCAP 元数据..."
     kill -INT "$bag_pid" 2>/dev/null || true
     wait "$bag_pid" || true
-  fi
-
-  if [[ -n "$driver_pid" ]] && kill -0 "$driver_pid" 2>/dev/null; then
-    echo "正在停止 MRDVS LiDAR 驱动..."
-    kill -INT "$driver_pid" 2>/dev/null || true
-    wait "$driver_pid" || true
   fi
 
   exit "$exit_code"
@@ -187,11 +177,5 @@ if ! kill -0 "$bag_pid" 2>/dev/null; then
   exit 1
 fi
 
-echo "正在以默认 IP 192.168.100.82 启动 MRDVS LiDAR 驱动..."
-run_in_new_session ros2 launch lx_camera_ros lx_lidar_ros.launch.py \
-  ip:=192.168.100.82 \
-  enable_rviz:=false &
-driver_pid="$!"
-
-echo "录制中。按 Ctrl+C 停止驱动并安全写入数据包。"
-wait "$driver_pid"
+echo "录制中（驱动请在另一个终端单独启动）。按 Ctrl+C 停止录包并安全写入数据包。"
+wait "$bag_pid"

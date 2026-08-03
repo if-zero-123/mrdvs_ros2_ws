@@ -500,7 +500,7 @@ source install/setup.bash
 ./record_mrdvs_sensor_bag.sh <bag_name>
 ```
 
-脚本启动前会清理本脚本留下的旧 rosbag、LiDAR launch 和 MRDVS 驱动进程；如果旧进程无法退出，会停止启动新录制。脚本自动以默认 IP `192.168.100.82` 启动 `lx_lidar_ros.launch.py`，先创建 MCAP 录包订阅，再启动驱动，因此不会遗漏驱动刚启动的数据。数据保存到 `/home/zero/MRDVS_bags/<bag_name>`，只包含 `/lx_camera_node/LxCamera_Cloud`、`/lx_camera_node/LxCamera_Rgb` 和 `/lx_camera_node/LxCamera_Imu`；LiDAR 模式显式关闭 RGBD 对齐、2D 去畸变和 3D 去畸变。按 `Ctrl+C` 会先安全结束 rosbag 并写入 MCAP 元数据，再停止驱动；同名数据包目录会被拒绝覆盖。
+脚本启动前会清理本脚本留下的旧 rosbag 录制进程；驱动需要在另一个终端单独启动（例如 `ros2 launch lx_camera_ros lx_lidar_ros.launch.py ip:=192.168.100.82 enable_rviz:=false`）。数据保存到 `/home/zero/MRDVS_bags/<bag_name>`，只包含 `/lx_camera_node/LxCamera_Cloud`、`/lx_camera_node/LxCamera_Rgb` 和 `/lx_camera_node/LxCamera_Imu`。按 `Ctrl+C` 会安全结束 rosbag 并写入 MCAP 元数据；同名数据包目录会被拒绝覆盖。
 
 录制输出目录为 `~/bag/<bag_name>`。脚本会拒绝覆盖已经存在的同名 bag，录制时按 `Ctrl+C` 停止。
 
@@ -1001,6 +1001,7 @@ src/fast_livo/config/mrdvs_lidar_imu_init.yaml
 
 ## 更新记录
 
+- 2026-08-03：`record_mrdvs_sensor_bag.sh` 改为只负责 rosbag 录制和 MCAP 安全收尾，不再拉起或停止 MRDVS 驱动；驱动与录包可分别运行。
 - 2026-08-03：调整 `record_mrdvs_sensor_bag.sh` 的停止顺序：先安全结束 rosbag 并写入 MCAP 元数据，再关闭 LiDAR 驱动；因此收尾阶段不再录入驱动停止过程中的少量消息。
 - 2026-08-03：新增 `record_mrdvs_sensor_bag.sh`，一键启动默认 IP 的 MRDVS LiDAR 驱动并录制点云、未去畸变 RGB 与 IMU 三个话题到 `/home/zero/MRDVS_bags/<bag_name>`；LiDAR launch 现在显式关闭 2D 去畸变。
 - 2026-07-16：MRDVS LiDAR/SLAM 模式固定并读回校验 `LX_INT_XYZ_COORDINATE=0`；设置、读回失败或值不一致时阻止启动数据流，实机确认 SDK 返回 0 且 XYZIRT 点云正常发布。
