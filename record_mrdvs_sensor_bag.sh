@@ -121,9 +121,6 @@ cleanup_stale_sessions() {
   stop_matching_processes \
     "旧 rosbag" \
     "ros2 bag record --storage mcap --output ${bag_root}"
-  stop_matching_processes \
-    "旧录制脚本 wrapper" \
-    "record_mrdvs_sensor_bag.sh"
 }
 
 run_in_new_session() {

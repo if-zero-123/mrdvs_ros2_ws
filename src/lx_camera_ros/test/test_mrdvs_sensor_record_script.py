@@ -39,6 +39,8 @@ def test_cleanup_stale_sessions_runs_before_new_recording():
         "run_in_new_session ros2 bag record"
     )
     assert "ros2 bag record --storage mcap" in script_source
+    assert '"旧录制脚本 wrapper"' not in script_source
+    assert '"record_mrdvs_sensor_bag.sh"' not in script_source
 
 
 def test_new_processes_restore_interrupt_signal_defaults_and_force_stale_cleanup():
@@ -52,7 +54,6 @@ def test_new_session_wrapper_execs_so_record_pid_is_direct_child():
     script_source = (WORKSPACE_ROOT / "record_mrdvs_sensor_bag.sh").read_text()
 
     assert "exec setsid bash -c" in script_source
-    assert '"record_mrdvs_sensor_bag.sh"' in script_source
 
 
 def test_lidar_launch_explicitly_disables_2d_undistortion():
