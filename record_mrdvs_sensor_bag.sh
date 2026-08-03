@@ -49,16 +49,16 @@ cleanup() {
   local exit_code="$?"
   trap - EXIT INT TERM
 
-  if [[ -n "$driver_pid" ]] && kill -0 "$driver_pid" 2>/dev/null; then
-    echo "正在停止 MRDVS LiDAR 驱动..."
-    kill -INT "$driver_pid" 2>/dev/null || true
-    wait "$driver_pid" || true
-  fi
-
   if [[ -n "$bag_pid" ]] && kill -0 "$bag_pid" 2>/dev/null; then
     echo "正在停止 rosbag 并写入 MCAP 元数据..."
     kill -INT "$bag_pid" 2>/dev/null || true
     wait "$bag_pid" || true
+  fi
+
+  if [[ -n "$driver_pid" ]] && kill -0 "$driver_pid" 2>/dev/null; then
+    echo "正在停止 MRDVS LiDAR 驱动..."
+    kill -INT "$driver_pid" 2>/dev/null || true
+    wait "$driver_pid" || true
   fi
 
   exit "$exit_code"

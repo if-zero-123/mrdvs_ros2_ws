@@ -24,6 +24,14 @@ def test_sensor_recording_processes_are_isolated_from_terminal_interrupts():
     assert "setsid ros2 launch lx_camera_ros lx_lidar_ros.launch.py" in script_source
 
 
+def test_cleanup_finalizes_rosbag_before_stopping_driver():
+    script_source = (WORKSPACE_ROOT / "record_mrdvs_sensor_bag.sh").read_text()
+
+    assert script_source.index('if [[ -n "$bag_pid" ]]') < script_source.index(
+        'if [[ -n "$driver_pid" ]]'
+    )
+
+
 def test_lidar_launch_explicitly_disables_2d_undistortion():
     launch_source = (
         WORKSPACE_ROOT / "src/lx_camera_ros/launch/lx_lidar_ros.launch.py"
