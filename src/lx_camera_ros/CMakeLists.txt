@@ -144,6 +144,9 @@ target_include_directories(test_slam_sensor_settings PRIVATE
 ament_add_pytest_test(test_lidar_launch_contract
 				test/test_lidar_launch_contract.py
 				TIMEOUT 30)
+ament_add_pytest_test(test_mrdvs_sensor_record_script
+				test/test_mrdvs_sensor_record_script.py
+				TIMEOUT 30)
 endif()
 
 
