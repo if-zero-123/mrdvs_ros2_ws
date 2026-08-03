@@ -40,6 +40,20 @@ def test_index_contains_required_mobile_sections_and_controls():
     assert 'maxlength="80"' in html
 
 
+def test_index_contains_recording_mode_and_topic_selection_controls():
+    html = read("index.html")
+    for element_id in [
+        "rgb-recording-mode",
+        "topic-recording-mode",
+        "topic-selection",
+        "topic-selection-list",
+        "recorded-topics",
+    ]:
+        assert f'id="{element_id}"' in html
+    assert "JPEG 质量 100" in html
+    assert "/tf" in html and "/tf_static" in html
+
+
 def test_frontend_uses_only_local_vendor_assets():
     html = read("index.html")
     assert "/static/vendor/chart.umd.js" in html
@@ -75,6 +89,16 @@ def test_javascript_matches_api_and_binary_contracts():
     assert "MPC1" in pointcloud
     assert "8 + count * 16" in pointcloud
     assert "geometry.dispose()" in pointcloud
+
+
+def test_javascript_contains_recording_selection_payload_and_defaults():
+    api = read("js/api.js")
+    app = read("js/app.js")
+    html = read("index.html")
+    assert "rgb_mode" in api and "topic_mode" in api and "selected_topics" in api
+    assert '<option value="raw">' in html and '<option value="all">' in html
+    assert "recordingOptions" in app
+    assert "selected_topics" in app
 
 
 def test_mobile_css_has_touch_targets_and_single_column_breakpoint():

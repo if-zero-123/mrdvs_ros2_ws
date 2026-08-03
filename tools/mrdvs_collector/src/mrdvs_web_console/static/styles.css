@@ -127,6 +127,13 @@ input:focus, select:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgb
 .toggle-row input { width: 20px; min-height: 20px; accent-color: var(--cyan); }
 .toggle-row span { display: grid; gap: 4px; }
 .toggle-row small { color: var(--muted); font-weight: 500; }
+.recording-options { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; margin-top: 14px; }
+.topic-selection { margin: 4px 0 14px; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: rgba(5, 15, 27, 0.38); }
+.topic-selection-heading { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; font-size: 0.8rem; }
+.topic-selection-heading small { color: var(--muted); font-weight: 500; }
+.topic-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.topic-check { display: flex; align-items: center; gap: 8px; min-height: 38px; margin: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); font-size: 0.74rem; font-weight: 600; }
+.topic-check input { width: 18px; min-height: 18px; accent-color: var(--cyan); }
 .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 16px; }
 .button-grid.two { grid-template-columns: 1fr 1fr; }
 button { border: 1px solid transparent; border-radius: 12px; padding: 9px 13px; font-weight: 800; }
@@ -182,7 +189,7 @@ dialog::backdrop { background: rgba(0, 5, 12, 0.78); backdrop-filter: blur(5px);
   .status-grid { grid-template-columns: 1fr 1fr; }
   .status-card, .status-card.wide { grid-column: span 1; }
   .panel { padding: 15px; border-radius: 15px; }
-  .button-grid, .settings-grid, .chart-grid { grid-template-columns: 1fr; }
+  .button-grid, .settings-grid, .chart-grid, .recording-options, .topic-grid { grid-template-columns: 1fr; }
   .full-row { grid-column: 1; }
   #pointcloud-view { min-height: 56vh; }
   .chart-wrap { min-height: 240px; }

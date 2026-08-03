@@ -10,6 +10,10 @@ const byId = (id) => document.getElementById(id);
 const connection = byId("connection-state");
 const bagName = byId("bag-name");
 const recordWithDriver = byId("record-with-driver");
+const rgbRecordingMode = byId("rgb-recording-mode");
+const topicRecordingMode = byId("topic-recording-mode");
+const topicSelection = byId("topic-selection");
+const topicInputs = () => [...document.querySelectorAll("#topic-selection-list input[data-topic]")];
 const messageLine = byId("session-message");
 const toast = byId("toast");
 let currentStatus = null;
@@ -34,6 +38,21 @@ function requireBagName() {
   return value;
 }
 
+function recordingOptions() {
+  const mode = topicRecordingMode.value;
+  const selectedTopics = topicInputs().filter((input) => input.checked).map((input) => input.dataset.topic);
+  if (mode === "selected" && selectedTopics.length === 0) throw new Error("选择话题模式至少要勾选一个话题");
+  return {
+    rgb_mode: rgbRecordingMode.value,
+    topic_mode: mode,
+    selected_topics: mode === "selected" ? selectedTopics : null,
+  };
+}
+
+function updateTopicSelection() {
+  topicSelection.hidden = topicRecordingMode.value !== "selected";
+}
+
 function stateText(value) {
   return ({ stopped: "已停止", starting: "启动中", running: "运行中", stopping: "停止中", error: "异常", recording: "录制中" })[value] || value || "未知";
 }
@@ -55,6 +74,10 @@ function updateStatus(status) {
   byId("imu-status").textContent = `${Number(status.topics.imu_hz).toFixed(1)} Hz`;
   byId("disk-status").textContent = `${formatBytes(status.disk.free_bytes)} 可用`;
   byId("active-bag").textContent = status.active_bag_name || "未录制";
+  if (status.recorded_topics?.length) {
+    const mode = status.rgb_recording_mode === "compressed" ? "compressed JPEG 100" : "原始 RGB";
+    byId("recorded-topics").textContent = `当前录制：${mode} · ${status.recorded_topics.length} 个话题`;
+  }
   const driverBusy = ["starting", "stopping"].includes(status.driver_state);
   const recordingBusy = ["starting", "stopping"].includes(status.recording_state);
   byId("start-driver").disabled = status.driver_state === "running" || driverBusy;
@@ -63,6 +86,9 @@ function updateStatus(status) {
   byId("stop-recording").disabled = status.recording_state !== "recording" || recordingBusy;
   bagName.disabled = status.recording_state === "recording" || recordingBusy;
   recordWithDriver.disabled = status.driver_state === "running" || driverBusy;
+  rgbRecordingMode.disabled = status.driver_state === "running" || driverBusy || recordingBusy;
+  topicRecordingMode.disabled = status.driver_state === "running" || driverBusy || recordingBusy;
+  topicInputs().forEach((input) => { input.disabled = status.driver_state === "running" || driverBusy || recordingBusy; });
   messageLine.textContent = status.last_error || status.last_warning || "";
 }
 
@@ -143,15 +169,26 @@ document.querySelectorAll(".tab-button").forEach((button) => button.addEventList
 }));
 
 byId("start-driver").addEventListener("click", async () => {
-  try { await startDriver(recordWithDriver.checked, recordWithDriver.checked ? requireBagName() : null); await refreshStatus(); }
+  try {
+    await startDriver(
+      recordWithDriver.checked,
+      recordWithDriver.checked ? requireBagName() : null,
+      recordingOptions(),
+    );
+    await refreshStatus();
+  }
   catch (error) { showToast(error.message, true); }
 });
 byId("stop-driver").addEventListener("click", async () => { try { await stopDriver(); await refreshStatus(); await refreshBags(); } catch (error) { showToast(error.message, true); } });
-byId("start-recording").addEventListener("click", async () => { try { await startRecording(requireBagName()); await refreshStatus(); } catch (error) { showToast(error.message, true); } });
+byId("start-recording").addEventListener("click", async () => {
+  try { await startRecording(requireBagName(), recordingOptions()); await refreshStatus(); }
+  catch (error) { showToast(error.message, true); }
+});
 byId("stop-recording").addEventListener("click", async () => { try { await stopRecording(); await refreshStatus(); await refreshBags(); } catch (error) { showToast(error.message, true); } });
 byId("refresh-logs").addEventListener("click", refreshLogs);
 byId("refresh-bags").addEventListener("click", refreshBags);
 byId("reset-view").addEventListener("click", () => pointCloud.reset());
+topicRecordingMode.addEventListener("change", updateTopicSelection);
 
 byId("confirm-delete").addEventListener("click", async (event) => {
   event.preventDefault();
@@ -197,3 +234,5 @@ refreshBags();
 window.setInterval(refreshStatus, 1000);
 window.setInterval(refreshLogs, 3000);
 window.setInterval(refreshBags, 5000);
+
+updateTopicSelection();

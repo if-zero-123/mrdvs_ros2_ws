@@ -51,9 +51,26 @@ export const getStatus = () => request(endpoints.status);
 export const getLogs = () => request(endpoints.logs);
 export const getBags = () => request(endpoints.bags);
 export const getSettings = () => request(endpoints.settings);
-export const startDriver = (record, bagName) => request(endpoints.driverStart, { method: "POST", body: JSON.stringify({ record, bag_name: bagName || null }) });
+export const startDriver = (record, bagName, options = {}) => request(endpoints.driverStart, {
+  method: "POST",
+  body: JSON.stringify({
+    record,
+    bag_name: bagName || null,
+    rgb_mode: options.rgb_mode || "raw",
+    topic_mode: options.topic_mode || "all",
+    selected_topics: options.selected_topics || null,
+  }),
+});
 export const stopDriver = () => request(endpoints.driverStop, { method: "POST" });
-export const startRecording = (bagName) => request(endpoints.recordingStart, { method: "POST", body: JSON.stringify({ bag_name: bagName }) });
+export const startRecording = (bagName, options = {}) => request(endpoints.recordingStart, {
+  method: "POST",
+  body: JSON.stringify({
+    bag_name: bagName,
+    rgb_mode: options.rgb_mode || "raw",
+    topic_mode: options.topic_mode || "all",
+    selected_topics: options.selected_topics || null,
+  }),
+});
 export const stopRecording = () => request(endpoints.recordingStop, { method: "POST" });
 export const deleteBag = (name, confirmation) => request(`${endpoints.bags}/${encodeURIComponent(name)}`, { method: "DELETE", body: JSON.stringify({ confirmation }) });
 export const downloadBagUrl = (name) => `${endpoints.bags}/${encodeURIComponent(name)}/download`;

@@ -47,8 +47,44 @@
           <p class="field-help">支持中文、字母、数字、短横线和下划线，不会自动改名。</p>
           <label class="toggle-row" for="record-with-driver">
             <input id="record-with-driver" type="checkbox">
-            <span><strong>随驱动完整录制全部话题</strong><small>网页点云抽样不会影响 rosbag</small></span>
+            <span><strong>随驱动启动录制</strong><small>网页点云抽样不会影响 rosbag</small></span>
           </label>
+          <div class="recording-options">
+            <label for="rgb-recording-mode">RGB 录制方式
+              <select id="rgb-recording-mode">
+                <option value="raw">原始图像</option>
+                <option value="compressed">压缩图像（JPEG 质量 100）</option>
+              </select>
+            </label>
+            <label for="topic-recording-mode">录制范围
+              <select id="topic-recording-mode">
+                <option value="all">全部 MRDVS 话题</option>
+                <option value="selected">选择话题</option>
+              </select>
+            </label>
+          </div>
+          <div id="topic-selection" class="topic-selection" hidden>
+            <div class="topic-selection-heading">
+              <strong>选择要录制的话题</strong>
+              <small>/tf 和 /tf_static 始终录制</small>
+            </div>
+            <div id="topic-selection-list" class="topic-grid">
+              <label class="topic-check"><input type="checkbox" data-topic="/lx_camera_node/LxCamera_Rgb" checked><span>RGB 原始 Image</span></label>
+              <label class="topic-check"><input type="checkbox" data-topic="/lx_camera_node/LxCamera_RgbInfo" checked><span>RGB CameraInfo</span></label>
+              <label class="topic-check"><input type="checkbox" data-topic="/lx_camera_node/LxCamera_Cloud" checked><span>点云 Cloud</span></label>
+              <label class="topic-check"><input type="checkbox" data-topic="/lx_camera_node/LxCamera_Depth" checked><span>Depth</span></label>
+              <label class="topic-check"><input type="checkbox" data-topic="/lx_camera_node/LxCamera_Amp" checked><span>Amp</span></label>
+              <label class="topic-check"><input type="checkbox" data-topic="/lx_camera_node/LxCamera_TofInfo" checked><span>ToF CameraInfo</span></label>
+              <label class="topic-check"><input type="checkbox" data-topic="/lx_camera_node/LxCamera_Imu" checked><span>IMU</span></label>
+              <label class="topic-check"><input type="checkbox" data-topic="/lx_camera_node/LxCamera_Error" checked><span>Error</span></label>
+              <label class="topic-check"><input type="checkbox" data-topic="/lx_camera_node/LxCamera_Message" checked><span>Message</span></label>
+              <label class="topic-check"><input type="checkbox" data-topic="/lx_camera_node/LxCamera_FrameRate" checked><span>FrameRate</span></label>
+              <label class="topic-check"><input type="checkbox" data-topic="/lx_camera_node/LxCamera_Obstacle" checked><span>Obstacle</span></label>
+              <label class="topic-check"><input type="checkbox" data-topic="/lx_camera_node/LxCamera_Pallet" checked><span>Pallet</span></label>
+              <label class="topic-check"><input type="checkbox" data-topic="/lx_camera_node/LxCamera_TF" checked><span>MRDVS TF</span></label>
+            </div>
+          </div>
+          <p id="recorded-topics" class="field-help">录制配置：默认原始图像和全部话题</p>
           <div id="driver-control" class="button-grid">
             <button id="start-driver" class="primary">启动驱动</button>
             <button id="stop-driver" class="danger" disabled>停止驱动</button>
