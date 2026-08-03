@@ -122,6 +122,8 @@ cd /home/cat/mrdvs_collector/app
 bash deploy/install_lubancat.sh
 ```
 
+压缩 RGB 录制依赖 ROS 2 的 `image_transport` 和 `compressed_image_transport`。安装器会在修改系统前检查这两个包；如果提示缺少 compressed 插件，可先通过鲁班猫的 ROS 软件源安装 `ros-jazzy-compressed-image-transport`，再重新运行安装器。
+
 安装器创建 ARM64 虚拟环境、安装 Python 包、校验 sudoers、安装 systemd 单元、创建热点配置并启用下次开机自启；它不会在安装过程中立即切换当前网络。更新应用后可执行 `sudo systemctl restart mrdvs-web-console.service` 加载新版本。
 
 ### 开机和访问网页
