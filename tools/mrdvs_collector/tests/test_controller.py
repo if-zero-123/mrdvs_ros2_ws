@@ -150,6 +150,85 @@ async def test_start_with_recording_prearms_bag_before_driver(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_compressed_recording_starts_compression_rosbag_then_driver(
+    tmp_path: Path,
+):
+    controller, runner, _ = make_controller(tmp_path)
+
+    await controller.start_driver(
+        record=True,
+        bag_name="compressed",
+        rgb_mode=RgbRecordingMode.COMPRESSED,
+    )
+
+    assert [name for name, _ in runner.commands] == [
+        "compression",
+        "rosbag",
+        "driver",
+    ]
+    assert "/lx_camera_node/LxCamera_Rgb/compressed" in runner.commands[1][1]
+    command = runner.commands[1][1]
+    topics = command[command.index("--topics") + 1 : command.index("--include-hidden-topics")]
+    assert "/lx_camera_node/LxCamera_Rgb" not in topics
+    assert ["--exclude", "/lx_camera_node/LxCamera_Rgb"] == command[-2:]
+    await controller.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_compression_exit_marks_bag_error_and_stops_rosbag(
+    tmp_path: Path,
+):
+    controller, runner, bags = make_controller(tmp_path)
+
+    await controller.start_driver(
+        record=True,
+        bag_name="broken",
+        rgb_mode=RgbRecordingMode.COMPRESSED,
+    )
+    runner.processes["compression"].exit(9)
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert controller.snapshot().recording_state is RecordingState.ERROR
+    assert bags._load_status("broken")["state"] is BagState.ERROR
+    assert runner.stop_order == ["driver", "rosbag"]
+    await controller.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_stop_order_is_driver_compression_rosbag(tmp_path: Path):
+    controller, runner, _ = make_controller(tmp_path)
+
+    await controller.start_driver(
+        record=True,
+        bag_name="room",
+        rgb_mode=RgbRecordingMode.COMPRESSED,
+    )
+    await controller.stop_driver()
+
+    assert runner.stop_order == ["driver", "compression", "rosbag"]
+    await controller.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_rosbag_exit_stops_driver_and_compression(tmp_path: Path):
+    controller, runner, bags = make_controller(tmp_path)
+
+    await controller.start_driver(
+        record=True,
+        bag_name="bag-failed",
+        rgb_mode=RgbRecordingMode.COMPRESSED,
+    )
+    runner.processes["rosbag"].exit(7)
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert runner.stop_order == ["driver", "compression"]
+    assert bags._load_status("bag-failed")["state"] is BagState.ERROR
+    await controller.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_start_recording_requires_running_driver(tmp_path: Path):
     controller, _, _ = make_controller(tmp_path)
 

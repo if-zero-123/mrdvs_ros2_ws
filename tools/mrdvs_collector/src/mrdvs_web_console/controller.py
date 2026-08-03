@@ -88,6 +88,10 @@ class RuntimeSnapshot:
     recording_returncode: int | None
     last_error: str
     last_warning: str
+    rgb_recording_mode: RgbRecordingMode
+    topic_recording_mode: TopicRecordingMode
+    recorded_topics: tuple[str, ...]
+    compression_returncode: int | None
 
 
 def driver_command(config: AppConfig) -> list[str]:
@@ -132,7 +136,11 @@ def resolve_topics(
     return tuple(dict.fromkeys((*source, *FIXED_TOPICS)))
 
 
-def bag_command(path: Path, topics: tuple[str, ...] | None = None) -> list[str]:
+def bag_command(
+    path: Path,
+    topics: tuple[str, ...] | None = None,
+    exclude_topics: tuple[str, ...] = (),
+) -> list[str]:
     command = [
         "ros2",
         "bag",
@@ -151,6 +159,8 @@ def bag_command(path: Path, topics: tuple[str, ...] | None = None) -> list[str]:
             str(path),
         ]
     )
+    for topic in exclude_topics:
+        command.extend(["--exclude", topic])
     return command
 
 
@@ -189,11 +199,16 @@ class CollectorController:
         self._lock = asyncio.Lock()
         self._driver: ProcessHandle | None = None
         self._recording: ProcessHandle | None = None
+        self._compression: ProcessHandle | None = None
         self._driver_state = DriverState.STOPPED
         self._recording_state = RecordingState.STOPPED
         self._active_bag_name: str | None = None
         self._driver_returncode: int | None = None
         self._recording_returncode: int | None = None
+        self._compression_returncode: int | None = None
+        self._rgb_recording_mode = RgbRecordingMode.RAW
+        self._topic_recording_mode = TopicRecordingMode.ALL
+        self._recorded_topics: tuple[str, ...] = ()
         self._last_error = ""
         self._last_warning = ""
         self._monitor_tasks: set[asyncio.Task[None]] = set()
@@ -213,6 +228,10 @@ class CollectorController:
             recording_returncode=self._recording_returncode,
             last_error=self._last_error,
             last_warning=self._last_warning,
+            rgb_recording_mode=self._rgb_recording_mode,
+            topic_recording_mode=self._topic_recording_mode,
+            recorded_topics=self._recorded_topics,
+            compression_returncode=self._compression_returncode,
         )
 
     def logs(self) -> tuple[str, ...]:
@@ -221,9 +240,18 @@ class CollectorController:
             lines.extend(f"[driver] {line}" for line in self._driver.logs)
         if self._recording is not None:
             lines.extend(f"[rosbag] {line}" for line in self._recording.logs)
+        if self._compression is not None:
+            lines.extend(f"[compression] {line}" for line in self._compression.logs)
         return tuple(lines[-500:])
 
-    async def start_driver(self, record: bool, bag_name: str | None) -> RuntimeSnapshot:
+    async def start_driver(
+        self,
+        record: bool,
+        bag_name: str | None,
+        rgb_mode: RgbRecordingMode = RgbRecordingMode.RAW,
+        topic_mode: TopicRecordingMode = TopicRecordingMode.ALL,
+        selected_topics: Sequence[str] | None = None,
+    ) -> RuntimeSnapshot:
         async with self._lock:
             if self._driver is not None or self._driver_state in {
                 DriverState.STARTING,
@@ -236,7 +264,13 @@ class CollectorController:
             if record:
                 if not bag_name:
                     raise CollectorConflict("同时录制时必须填写数据包名称")
-                await self._start_recording_locked(bag_name, require_driver=False)
+                await self._start_recording_locked(
+                    bag_name,
+                    require_driver=False,
+                    rgb_mode=rgb_mode,
+                    topic_mode=topic_mode,
+                    selected_topics=selected_topics,
+                )
             self._driver_state = DriverState.STARTING
             try:
                 process = await self._runner.start("driver", driver_command(self.config))
@@ -263,9 +297,21 @@ class CollectorController:
             self.config = config
             self._bags = bags
 
-    async def start_recording(self, bag_name: str) -> RuntimeSnapshot:
+    async def start_recording(
+        self,
+        bag_name: str,
+        rgb_mode: RgbRecordingMode = RgbRecordingMode.RAW,
+        topic_mode: TopicRecordingMode = TopicRecordingMode.ALL,
+        selected_topics: Sequence[str] | None = None,
+    ) -> RuntimeSnapshot:
         async with self._lock:
-            await self._start_recording_locked(bag_name, require_driver=True)
+            await self._start_recording_locked(
+                bag_name,
+                require_driver=True,
+                rgb_mode=rgb_mode,
+                topic_mode=topic_mode,
+                selected_topics=selected_topics,
+            )
             return self.snapshot()
 
     async def stop_recording(self, reason: str = "用户停止录制") -> RuntimeSnapshot:
@@ -281,15 +327,7 @@ class CollectorController:
         async with self._lock:
             if self._driver is None:
                 raise CollectorConflict("驱动尚未启动")
-            process = self._driver
-            self._driver_state = DriverState.STOPPING
-            returncode = await process.stop()
-            self._archive("driver", process)
-            self._driver = None
-            self._driver_returncode = returncode
-            self._driver_state = DriverState.STOPPED
-            if returncode not in {0, -2, -6}:
-                self._last_warning = f"驱动停止返回代码 {returncode}"
+            await self._stop_driver_locked()
             if self._recording is not None:
                 await self._stop_recording_locked(BagState.COMPLETE, "驱动会话已停止")
             return self.snapshot()
@@ -312,20 +350,33 @@ class CollectorController:
         self._shutdown_event.set()
         async with self._lock:
             if self._driver is not None:
-                process = self._driver
-                self._driver_state = DriverState.STOPPING
-                self._driver_returncode = await process.stop()
-                self._archive("driver", process)
-                self._driver = None
-                self._driver_state = DriverState.STOPPED
+                await self._stop_driver_locked()
             if self._recording is not None:
                 await self._stop_recording_locked(BagState.COMPLETE, "网页服务已停止")
         pending = [task for task in self._monitor_tasks if not task.done()]
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
 
+    async def _stop_driver_locked(self) -> None:
+        process = self._driver
+        if process is None:
+            return
+        self._driver_state = DriverState.STOPPING
+        returncode = await process.stop()
+        self._archive("driver", process)
+        self._driver = None
+        self._driver_returncode = returncode
+        self._driver_state = DriverState.STOPPED
+        if returncode not in {0, -2, -6}:
+            self._last_warning = f"驱动停止返回代码 {returncode}"
+
     async def _start_recording_locked(
-        self, bag_name: str, require_driver: bool
+        self,
+        bag_name: str,
+        require_driver: bool,
+        rgb_mode: RgbRecordingMode,
+        topic_mode: TopicRecordingMode,
+        selected_topics: Sequence[str] | None,
     ) -> None:
         if require_driver and self._driver_state is not DriverState.RUNNING:
             raise CollectorConflict("必须先启动驱动才能开始录制")
@@ -334,13 +385,44 @@ class CollectorController:
         if self._bags.disk_status().must_stop:
             raise CollectorConflict("剩余空间低于 5GB，不能开始录制")
         path = self._bags.prepare(bag_name)
+        topics = resolve_topics(rgb_mode, topic_mode, selected_topics)
+        self._rgb_recording_mode = rgb_mode
+        self._topic_recording_mode = topic_mode
+        self._recorded_topics = topics
+        self._compression_returncode = None
         self._recording_state = RecordingState.STARTING
+        compression: ProcessHandle | None = None
         try:
-            process = await self._runner.start("rosbag", bag_command(path))
+            if rgb_mode is RgbRecordingMode.COMPRESSED:
+                compression = await self._runner.start(
+                    "compression", compression_command()
+                )
+                await self._startup_grace(compression)
+                if not compression.alive:
+                    raise RuntimeError(
+                        f"RGB 压缩节点启动后立即退出：{compression.returncode}"
+                    )
+                self._compression = compression
+
+            all_mode = topic_mode is TopicRecordingMode.ALL
+            process = await self._runner.start(
+                "rosbag",
+                bag_command(
+                    path,
+                    None if all_mode and rgb_mode is RgbRecordingMode.RAW else topics,
+                    (RGB_RAW_TOPIC,)
+                    if all_mode and rgb_mode is RgbRecordingMode.COMPRESSED
+                    else (),
+                ),
+            )
             await self._startup_grace(process)
             if not process.alive:
                 raise RuntimeError(f"rosbag 启动后立即退出：{process.returncode}")
         except Exception as error:
+            if self._compression is not None:
+                await self._stop_compression_locked()
+            elif compression is not None:
+                await compression.stop()
             self._recording_state = RecordingState.ERROR
             self._last_error = str(error)
             self._bags.mark_status(bag_name, BagState.ERROR, str(error))
@@ -348,7 +430,14 @@ class CollectorController:
         self._recording = process
         self._recording_state = RecordingState.RECORDING
         self._active_bag_name = bag_name
-        self._bags.mark_status(bag_name, BagState.RECORDING, "正在完整录制全部话题")
+        detail = (
+            "正在录制压缩 RGB（JPEG 质量 100）"
+            if rgb_mode is RgbRecordingMode.COMPRESSED
+            else "正在录制原始 RGB"
+        )
+        self._bags.mark_status(bag_name, BagState.RECORDING, detail)
+        if self._compression is not None:
+            self._watch(self._monitor_compression(self._compression))
         self._watch(self._monitor_recording(process, bag_name))
 
     async def _stop_recording_locked(self, final_state: BagState, detail: str) -> None:
@@ -357,6 +446,7 @@ class CollectorController:
         if process is None or bag_name is None:
             return
         self._recording_state = RecordingState.STOPPING
+        await self._stop_compression_locked()
         returncode = await process.stop()
         self._archive("rosbag", process)
         self._recording = None
@@ -368,6 +458,15 @@ class CollectorController:
         )
         self._active_bag_name = None
         self._bags.mark_status(bag_name, final_state, detail)
+
+    async def _stop_compression_locked(self) -> None:
+        process = self._compression
+        if process is None:
+            return
+        returncode = await process.stop()
+        self._archive("compression", process)
+        self._compression = None
+        self._compression_returncode = returncode
 
     async def _monitor_driver(self, process: ProcessHandle) -> None:
         returncode = await process.wait()
@@ -383,6 +482,23 @@ class CollectorController:
                 await self._stop_recording_locked(
                     BagState.ERROR, self._last_error
                 )
+
+    async def _monitor_compression(self, process: ProcessHandle) -> None:
+        returncode = await process.wait()
+        async with self._lock:
+            if (
+                self._compression is not process
+                or self._recording_state is RecordingState.STOPPING
+            ):
+                return
+            self._archive("compression", process)
+            self._compression = None
+            self._compression_returncode = returncode
+            self._last_error = f"RGB 压缩节点异常退出，代码 {returncode}"
+            if self._driver is not None:
+                await self._stop_driver_locked()
+            if self._recording is not None:
+                await self._stop_recording_locked(BagState.ERROR, self._last_error)
 
     async def _monitor_recording(
         self, process: ProcessHandle, bag_name: str
@@ -400,6 +516,9 @@ class CollectorController:
             self._recording_state = RecordingState.ERROR
             self._active_bag_name = None
             self._last_error = f"rosbag 异常退出，代码 {returncode}"
+            if self._driver is not None:
+                await self._stop_driver_locked()
+            await self._stop_compression_locked()
             self._bags.mark_status(bag_name, BagState.ERROR, self._last_error)
 
     async def _startup_grace(self, process: ProcessHandle) -> None:
