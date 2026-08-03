@@ -160,17 +160,19 @@ sudo systemctl start mrdvs-collector.target
 
 1. 打开“采集”页，在“数据包名称”中填写本次任务名称。
 2. 名称允许中文、英文字母、数字、短横线和下划线，最长 80 个字符；禁止路径分隔符、`.`、`..`、控制字符和同名覆盖。
-3. 需要从驱动启动时刻完整留存数据时，勾选“随驱动完整录制全部话题”。
-4. 点击“启动驱动”。后端会先启动 rosbag，再启动设备驱动，避免遗漏驱动最初发布的话题。
-5. 确认驱动和录制状态均正常；根据需要查看实时数据和日志。
-6. 采集结束点击“停止驱动”。后端先停止驱动，再向 rosbag 发送 SIGINT 并等待 MCAP 元数据写完。
-7. 进入“数据包”页检查名称、大小、状态和时长。
+3. 选择 RGB 录制方式：默认“原始图像”；也可以选择“压缩图像（JPEG 质量 100）”。JPEG 质量 100 仍是有损编码，需要逐像素一致时选择原始图像。
+4. 选择录制范围：默认“全部 MRDVS 话题”；选择“选择话题”后可在预置清单中勾选，`/tf` 和 `/tf_static` 始终保留。RGB 原始和 compressed 话题互斥。
+5. 需要从驱动启动时刻完整留存数据时，勾选“随驱动启动录制”。
+6. 点击“启动驱动”。后端会先启动压缩节点（如选择 compressed），再启动 rosbag，最后启动设备驱动，避免遗漏驱动最初发布的话题。
+7. 确认驱动和录制状态均正常；根据需要查看实时数据和日志。
+8. 采集结束点击“停止驱动”。后端按驱动、压缩节点、rosbag 顺序停止，并等待 MCAP 元数据写完。
+9. 进入“数据包”页检查名称、大小、状态和时长。
 
-如果只启动了驱动，也可以在驱动运行期间填写包名后单独点击“开始录制”和“停止录制”。推荐现场采集使用“随驱动完整录制”，这样更不容易遗漏启动阶段数据。
+如果只启动了驱动，也可以在驱动运行期间填写包名、选择录制方式和话题后单独点击“开始录制”和“停止录制”。推荐现场采集使用“随驱动启动录制”，这样更不容易遗漏启动阶段数据。压缩节点或 rosbag 异常退出时，数据包会自动停止并标记为错误。
 
 ### 完整录包与网页显示的区别
 
-完整录包固定使用：
+默认“全部 MRDVS 话题 + 原始图像”模式使用：
 
 ```bash
 ros2 bag record \
@@ -181,6 +183,8 @@ ros2 bag record \
 ```
 
 该命令不抽样、不限定话题列表、不修改消息字段，也不改写驱动时间戳。对于当前 MRDVS 驱动，会保留 `PointCloud2.header.stamp`、点级 `timestamp`、`Imu.header.stamp`、图像及驱动发布的其他消息。
+
+选择 compressed 模式时，网页会启动独立的 `image_transport republish raw compressed` 节点，以 JPEG 质量 100 发布 `/lx_camera_node/LxCamera_Rgb/compressed`；rosbag 排除原始 `/lx_camera_node/LxCamera_Rgb`，其他已选话题保持完整。压缩消息复制原始 RGB 的 `header.stamp` 和 `frame_id`，压缩延迟不会改写采集时间戳。
 
 页面中不同频率的含义：
 
@@ -312,10 +316,9 @@ journalctl -u mrdvs-web-console.service -n 100 --no-pager
 
 #### 不允许破坏的采集边界
 
-- 不得把 `bag_command()` 改成固定话题列表、正则过滤、抽样录制或消息转换节点。
-- 必须保留 `--all --include-hidden-topics --storage mcap`。
-- 同时录制时必须先启动 rosbag，再启动驱动。
-- 停止驱动会话时必须先停止驱动，再优雅停止 rosbag 并等待元数据写完。
+- “全部 MRDVS 话题 + 原始图像”模式必须保留 `--all --include-hidden-topics --storage mcap`；选择话题模式允许使用预置白名单，compressed 模式允许排除原始 RGB，但禁止抽样或消息改写。
+- 同时录制时必须先启动压缩节点（如有）、再启动 rosbag，最后启动驱动。
+- 停止驱动会话时必须先停止驱动，再停止压缩节点（如有），最后优雅停止 rosbag 并等待元数据写完。
 - 网页显示订阅只能读取显示副本，不能发布回原话题、修改源消息或阻塞 rosbag。
 - 不得使用 `shell=True`、拼接用户输入或让网页直接执行任意命令。
 - 不得放宽数据包名称、真实路径、活动包下载/删除和 5GB 磁盘保护。
@@ -495,7 +498,7 @@ source install/setup.bash
 ./record_mrdvs_sensor_bag.sh <bag_name>
 ```
 
-脚本自动以默认 IP `192.168.100.82` 启动 `lx_lidar_ros.launch.py`，先创建 MCAP 录包订阅，再启动驱动，因此不会遗漏驱动刚启动的数据。数据保存到 `/home/zero/MRDVS_bags/<bag_name>`，只包含 `/lx_camera_node/LxCamera_Cloud`、`/lx_camera_node/LxCamera_Rgb` 和 `/lx_camera_node/LxCamera_Imu`；LiDAR 模式显式关闭 RGBD 对齐、2D 去畸变和 3D 去畸变。按 `Ctrl+C` 会先停止驱动，再安全结束 rosbag 并写入 MCAP 元数据；同名数据包目录会被拒绝覆盖。
+脚本自动以默认 IP `192.168.100.82` 启动 `lx_lidar_ros.launch.py`，先创建 MCAP 录包订阅，再启动驱动，因此不会遗漏驱动刚启动的数据。数据保存到 `/home/zero/MRDVS_bags/<bag_name>`，只包含 `/lx_camera_node/LxCamera_Cloud`、`/lx_camera_node/LxCamera_Rgb` 和 `/lx_camera_node/LxCamera_Imu`；LiDAR 模式显式关闭 RGBD 对齐、2D 去畸变和 3D 去畸变。按 `Ctrl+C` 会先安全结束 rosbag 并写入 MCAP 元数据，再停止驱动；同名数据包目录会被拒绝覆盖。
 
 录制输出目录为 `~/bag/<bag_name>`。脚本会拒绝覆盖已经存在的同名 bag，录制时按 `Ctrl+C` 停止。
 
@@ -996,6 +999,7 @@ src/fast_livo/config/mrdvs_lidar_imu_init.yaml
 
 ## 更新记录
 
+- 2026-08-03：调整 `record_mrdvs_sensor_bag.sh` 的停止顺序：先安全结束 rosbag 并写入 MCAP 元数据，再关闭 LiDAR 驱动；因此收尾阶段不再录入驱动停止过程中的少量消息。
 - 2026-08-03：新增 `record_mrdvs_sensor_bag.sh`，一键启动默认 IP 的 MRDVS LiDAR 驱动并录制点云、未去畸变 RGB 与 IMU 三个话题到 `/home/zero/MRDVS_bags/<bag_name>`；LiDAR launch 现在显式关闭 2D 去畸变。
 - 2026-07-16：MRDVS LiDAR/SLAM 模式固定并读回校验 `LX_INT_XYZ_COORDINATE=0`；设置、读回失败或值不一致时阻止启动数据流，实机确认 SDK 返回 0 且 XYZIRT 点云正常发布。
 - 2026-07-16：PGO RViz 增加 `map` 原点坐标轴、原点 `(0,0,0)` 标签和设备实时 `x/y/z` 数值标签；默认布局精简为单个折叠的 Displays 面板，移除占空间的辅助面板和旧窗口状态。

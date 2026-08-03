@@ -16,9 +16,14 @@ fail() {
 [[ -f "$app_dir/pyproject.toml" ]] || fail "请先将应用同步到 $app_dir"
 [[ "$script_dir" == "$app_dir/deploy" ]] || fail "安装器必须从独立应用目录运行"
 
-for command in nmcli systemctl python3 sudo visudo; do
+source /opt/ros/jazzy/setup.bash
+source /home/cat/mrdvs_ros2_ws/install/setup.bash
+
+for command in nmcli systemctl python3 sudo visudo ros2; do
   command -v "$command" >/dev/null 2>&1 || fail "缺少命令 $command"
 done
+ros2 pkg prefix image_transport >/dev/null 2>&1 || fail "缺少 ROS image_transport"
+ros2 pkg prefix compressed_image_transport >/dev/null 2>&1 || fail "缺少 ROS compressed_image_transport"
 
 sudo install -d -o cat -g cat -m 0755 \
   "$collector_root" "$app_dir" "$collector_root/config" "$collector_root/state" "$collector_root/bags"

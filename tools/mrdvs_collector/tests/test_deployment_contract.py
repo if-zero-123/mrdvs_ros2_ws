@@ -74,5 +74,7 @@ def test_installer_is_arm64_only_idempotent_and_does_not_start_services():
     assert "systemctl start mrdvs-collector.target" not in installer
     assert "Python 依赖通过当前网络环境安装失败，改用直连重试" in installer
     assert "env -u ALL_PROXY -u all_proxy" in installer
+    assert "ros2 pkg prefix image_transport" in installer
+    assert "ros2 pkg prefix compressed_image_transport" in installer
     for directory in ["app", ".venv", "config", "state", "bags"]:
         assert directory in installer
