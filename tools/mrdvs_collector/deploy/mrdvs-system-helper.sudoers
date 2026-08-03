@@ -1,1 +1,0 @@
-cat ALL=(root) NOPASSWD: /usr/local/libexec/mrdvs-system-helper

@@ -36,4 +36,3 @@ coverage/
 *.egg-info/
 
 # MRDVS collector local runtime
-tools/mrdvs_collector/.runtime/
