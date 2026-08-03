@@ -178,7 +178,7 @@ def compression_command() -> list[str]:
         "-r",
         f"out:={RGB_RAW_TOPIC}",
         "-p",
-        "jpeg_quality:=100",
+        "out.compressed.jpeg_quality:=100",
     ]
 
 

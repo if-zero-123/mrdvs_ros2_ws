@@ -123,7 +123,7 @@ def test_compression_command_sets_quality_100():
     ]
     assert "in:=/lx_camera_node/LxCamera_Rgb" in command
     assert "out:=/lx_camera_node/LxCamera_Rgb" in command
-    assert "jpeg_quality:=100" in command
+    assert "out.compressed.jpeg_quality:=100" in command
 
 
 @pytest.mark.asyncio
