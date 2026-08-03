@@ -502,7 +502,7 @@ source install/setup.bash
 
 脚本启动前会清理本脚本留下的旧 rosbag 录制进程；驱动需要在另一个终端单独启动（例如 `ros2 launch lx_camera_ros lx_lidar_ros.launch.py ip:=192.168.100.82 enable_rviz:=false`）。数据保存到 `/home/zero/MRDVS_bags/<bag_name>`，只包含 `/lx_camera_node/LxCamera_Cloud`、`/lx_camera_node/LxCamera_Rgb` 和 `/lx_camera_node/LxCamera_Imu`。按 `Ctrl+C` 会安全结束 rosbag 并写入 MCAP 元数据；同名数据包目录会被拒绝覆盖。
 
-录制输出目录为 `~/bag/<bag_name>`。脚本会拒绝覆盖已经存在的同名 bag，录制时按 `Ctrl+C` 停止。
+`record_bag.sh` 的录制输出目录为 `~/bag/<bag_name>`；`record_mrdvs_sensor_bag.sh` 输出到前文的 `/home/zero/MRDVS_bags/<bag_name>`。两个脚本都会拒绝覆盖同名目录，录制时按 `Ctrl+C` 停止。
 
 ### 录制 MRDVS + FAST-LIVO2 排查数据包
 
