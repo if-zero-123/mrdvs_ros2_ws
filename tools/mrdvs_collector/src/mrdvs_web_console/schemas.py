@@ -2,6 +2,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, IPvAnyAddress, model_validator
 
+from .controller import RgbRecordingMode, TopicRecordingMode
+
 
 class StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -10,6 +12,9 @@ class StrictRequest(BaseModel):
 class DriverStartRequest(StrictRequest):
     record: bool = False
     bag_name: str | None = None
+    rgb_mode: RgbRecordingMode = RgbRecordingMode.RAW
+    topic_mode: TopicRecordingMode = TopicRecordingMode.ALL
+    selected_topics: list[str] | None = None
 
     @model_validator(mode="after")
     def require_name_for_recording(self):
@@ -20,6 +25,9 @@ class DriverStartRequest(StrictRequest):
 
 class RecordingStartRequest(StrictRequest):
     bag_name: str = Field(min_length=1, max_length=80)
+    rgb_mode: RgbRecordingMode = RgbRecordingMode.RAW
+    topic_mode: TopicRecordingMode = TopicRecordingMode.ALL
+    selected_topics: list[str] | None = None
 
 
 class DeleteBagRequest(StrictRequest):

@@ -2,7 +2,7 @@ import asyncio
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, Sequence
 
 from .bags import BagManager, BagState
 from .models import AppConfig
@@ -26,6 +26,36 @@ class RecordingState(str, Enum):
     RECORDING = "recording"
     STOPPING = "stopping"
     ERROR = "error"
+
+
+class RgbRecordingMode(str, Enum):
+    RAW = "raw"
+    COMPRESSED = "compressed"
+
+
+class TopicRecordingMode(str, Enum):
+    ALL = "all"
+    SELECTED = "selected"
+
+
+RGB_RAW_TOPIC = "/lx_camera_node/LxCamera_Rgb"
+RGB_COMPRESSED_TOPIC = f"{RGB_RAW_TOPIC}/compressed"
+FIXED_TOPICS: tuple[str, ...] = ("/tf", "/tf_static")
+PRESET_TOPICS: tuple[str, ...] = (
+    RGB_RAW_TOPIC,
+    "/lx_camera_node/LxCamera_RgbInfo",
+    "/lx_camera_node/LxCamera_Cloud",
+    "/lx_camera_node/LxCamera_Depth",
+    "/lx_camera_node/LxCamera_Amp",
+    "/lx_camera_node/LxCamera_TofInfo",
+    "/lx_camera_node/LxCamera_Imu",
+    "/lx_camera_node/LxCamera_Error",
+    "/lx_camera_node/LxCamera_Message",
+    "/lx_camera_node/LxCamera_FrameRate",
+    "/lx_camera_node/LxCamera_Obstacle",
+    "/lx_camera_node/LxCamera_Pallet",
+    "/lx_camera_node/LxCamera_TF",
+)
 
 
 class ProcessHandle(Protocol):
@@ -72,17 +102,73 @@ def driver_command(config: AppConfig) -> list[str]:
     ]
 
 
-def bag_command(path: Path) -> list[str]:
-    return [
+def resolve_topics(
+    rgb_mode: RgbRecordingMode,
+    topic_mode: TopicRecordingMode,
+    selected_topics: Sequence[str] | None = None,
+) -> tuple[str, ...]:
+    """Resolve the safe, known MRDVS topic set for one recording session."""
+
+    if topic_mode is TopicRecordingMode.ALL:
+        source = list(PRESET_TOPICS)
+    else:
+        if not selected_topics:
+            raise CollectorConflict("选择话题模式至少要勾选一个话题")
+        unknown = sorted(set(selected_topics) - set(PRESET_TOPICS))
+        if unknown:
+            raise CollectorConflict(f"包含未预置的话题：{', '.join(unknown)}")
+        source = list(dict.fromkeys(selected_topics))
+
+    if rgb_mode is RgbRecordingMode.COMPRESSED:
+        if RGB_COMPRESSED_TOPIC in source:
+            source.remove(RGB_COMPRESSED_TOPIC)
+        if RGB_RAW_TOPIC in source:
+            source[source.index(RGB_RAW_TOPIC)] = RGB_COMPRESSED_TOPIC
+        elif topic_mode is TopicRecordingMode.ALL:
+            source.insert(0, RGB_COMPRESSED_TOPIC)
+    elif RGB_COMPRESSED_TOPIC in source:
+        raise CollectorConflict("原始 RGB 模式不能选择 compressed 话题")
+
+    return tuple(dict.fromkeys((*source, *FIXED_TOPICS)))
+
+
+def bag_command(path: Path, topics: tuple[str, ...] | None = None) -> list[str]:
+    command = [
         "ros2",
         "bag",
         "record",
-        "--all",
-        "--include-hidden-topics",
-        "--storage",
-        "mcap",
-        "--output",
-        str(path),
+    ]
+    if topics is None:
+        command.extend(["--all"])
+    else:
+        command.extend(["--topics", *topics])
+    command.extend(
+        [
+            "--include-hidden-topics",
+            "--storage",
+            "mcap",
+            "--output",
+            str(path),
+        ]
+    )
+    return command
+
+
+def compression_command() -> list[str]:
+    return [
+        "ros2",
+        "run",
+        "image_transport",
+        "republish",
+        "raw",
+        "compressed",
+        "--ros-args",
+        "-r",
+        f"in:={RGB_RAW_TOPIC}",
+        "-r",
+        f"out:={RGB_RAW_TOPIC}",
+        "-p",
+        "jpeg_quality:=100",
     ]
 
 

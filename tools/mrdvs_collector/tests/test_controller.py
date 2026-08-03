@@ -8,9 +8,13 @@ from mrdvs_web_console.controller import (
     CollectorConflict,
     CollectorController,
     DriverState,
+    RgbRecordingMode,
     RecordingState,
+    TopicRecordingMode,
     bag_command,
+    compression_command,
     driver_command,
+    resolve_topics,
 )
 from mrdvs_web_console.models import AppConfig
 
@@ -74,6 +78,52 @@ def make_controller(tmp_path: Path) -> tuple[CollectorController, FakeRunner, Ba
         startup_grace_seconds=0,
     )
     return controller, runner, bags
+
+
+def test_selected_topics_add_tf_and_replace_rgb():
+    result = resolve_topics(
+        RgbRecordingMode.COMPRESSED,
+        TopicRecordingMode.SELECTED,
+        ("/lx_camera_node/LxCamera_Rgb", "/lx_camera_node/LxCamera_Imu"),
+    )
+    assert result == (
+        "/lx_camera_node/LxCamera_Rgb/compressed",
+        "/lx_camera_node/LxCamera_Imu",
+        "/tf",
+        "/tf_static",
+    )
+
+
+def test_bag_command_for_explicit_topics(tmp_path: Path):
+    command = bag_command(tmp_path / "bags" / "room1", ("/topic_a", "/tf"))
+    assert command == [
+        "ros2",
+        "bag",
+        "record",
+        "--topics",
+        "/topic_a",
+        "/tf",
+        "--include-hidden-topics",
+        "--storage",
+        "mcap",
+        "--output",
+        str(tmp_path / "bags" / "room1"),
+    ]
+
+
+def test_compression_command_sets_quality_100():
+    command = compression_command()
+    assert command[:6] == [
+        "ros2",
+        "run",
+        "image_transport",
+        "republish",
+        "raw",
+        "compressed",
+    ]
+    assert "in:=/lx_camera_node/LxCamera_Rgb" in command
+    assert "out:=/lx_camera_node/LxCamera_Rgb" in command
+    assert "jpeg_quality:=100" in command
 
 
 @pytest.mark.asyncio
