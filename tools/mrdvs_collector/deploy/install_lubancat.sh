@@ -16,8 +16,10 @@ fail() {
 [[ -f "$app_dir/pyproject.toml" ]] || fail "请先将应用同步到 $app_dir"
 [[ "$script_dir" == "$app_dir/deploy" ]] || fail "安装器必须从独立应用目录运行"
 
+set +u
 source /opt/ros/jazzy/setup.bash
 source /home/cat/mrdvs_ros2_ws/install/setup.bash
+set -u
 
 for command in nmcli systemctl python3 sudo visudo ros2; do
   command -v "$command" >/dev/null 2>&1 || fail "缺少命令 $command"

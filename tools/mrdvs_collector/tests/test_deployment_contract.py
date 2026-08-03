@@ -76,5 +76,7 @@ def test_installer_is_arm64_only_idempotent_and_does_not_start_services():
     assert "env -u ALL_PROXY -u all_proxy" in installer
     assert "ros2 pkg prefix image_transport" in installer
     assert "ros2 pkg prefix compressed_image_transport" in installer
+    assert installer.index("set +u") < installer.index("source /opt/ros/jazzy/setup.bash")
+    assert installer.index("set -u", installer.index("source /home/cat/mrdvs_ros2_ws/install/setup.bash")) > installer.index("source /home/cat/mrdvs_ros2_ws/install/setup.bash")
     for directory in ["app", ".venv", "config", "state", "bags"]:
         assert directory in installer
