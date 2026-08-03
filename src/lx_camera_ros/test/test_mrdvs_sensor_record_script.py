@@ -17,6 +17,13 @@ def test_sensor_record_script_records_only_required_topics_with_mcap():
     assert "-a" not in script_source
 
 
+def test_sensor_recording_processes_are_isolated_from_terminal_interrupts():
+    script_source = (WORKSPACE_ROOT / "record_mrdvs_sensor_bag.sh").read_text()
+
+    assert "setsid ros2 bag record" in script_source
+    assert "setsid ros2 launch lx_camera_ros lx_lidar_ros.launch.py" in script_source
+
+
 def test_lidar_launch_explicitly_disables_2d_undistortion():
     launch_source = (
         WORKSPACE_ROOT / "src/lx_camera_ros/launch/lx_lidar_ros.launch.py"

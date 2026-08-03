@@ -72,7 +72,7 @@ trap cleanup EXIT
 trap handle_interrupt INT TERM
 
 echo "rosbag 已准备录制到：$bag_path"
-ros2 bag record \
+setsid ros2 bag record \
   --storage mcap \
   --output "$bag_path" \
   /lx_camera_node/LxCamera_Cloud \
@@ -88,7 +88,7 @@ if ! kill -0 "$bag_pid" 2>/dev/null; then
 fi
 
 echo "正在以默认 IP 192.168.100.82 启动 MRDVS LiDAR 驱动..."
-ros2 launch lx_camera_ros lx_lidar_ros.launch.py \
+setsid ros2 launch lx_camera_ros lx_lidar_ros.launch.py \
   ip:=192.168.100.82 \
   enable_rviz:=false &
 driver_pid="$!"
