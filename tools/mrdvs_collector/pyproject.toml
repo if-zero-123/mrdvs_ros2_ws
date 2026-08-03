@@ -25,6 +25,7 @@ test = [
 
 [project.scripts]
 mrdvs-web-console = "mrdvs_web_console.main:main"
+mrdvs-timestamp-analysis = "mrdvs_web_console.timestamp_analysis:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

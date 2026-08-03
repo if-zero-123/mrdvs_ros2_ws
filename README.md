@@ -220,6 +220,45 @@ rsync -avhs --partial --info=progress2 \
 
 正在录制的数据包禁止下载和删除。网页删除需要输入完整数据包名称二次确认；删除后不可恢复。
 
+### 离线核对传感器时间、点级时间和录包时间
+
+`mrdvs-timestamp-analysis` 是面向网页采集 MCAP 的只读分析命令。它不播放数据包、不使用 `ros2 topic echo`，因此不会因为终端显示队列不足而把漏显示误判为传感器丢帧。命令分别保留并比较三种时间：
+
+| 时间 | 来源 | 正确用途 |
+| --- | --- | --- |
+| 传感器帧时间 | `PointCloud2.header.stamp`、`Imu.header.stamp` | 点云与 IMU 同步、判断设备是否跳秒 |
+| 点级设备时间 | `PointCloud2.data.timestamp` | 点云帧内去畸变；当前 MRDVS LiDAR 模式下原始单位为微秒 |
+| MCAP 接收时间 | rosbag 读取器返回的 `recorded_stamp` | 排查录制积压和回放为何停顿；不能替代传感器时间 |
+
+在本机或鲁班猫安装采集工具后执行：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+
+mrdvs-timestamp-analysis \
+  /home/zero/MRDVS_bags/大楼户外 \
+  --output-dir /home/zero/MRDVS_bags/大楼户外/timestamp_analysis
+```
+
+鲁班猫上的默认示例：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+
+/home/cat/mrdvs_collector/.venv/bin/mrdvs-timestamp-analysis \
+  /home/cat/mrdvs_collector/bags/<数据包名称>
+```
+
+默认输出目录会生成以下文件：
+
+- `timestamp_comparison.csv`：每条点云/IMU 消息的 `header.stamp`、MCAP 接收时间、二者差值，以及点云每帧点级时间的最小值、最大值和相对帧头偏移。
+- `timestamp_summary.json`：可供其他程序读取的汇总统计。
+- `timestamp_comparison.svg`：点云和 IMU 的传感器帧间隔与 MCAP 接收间隔对比图。
+- `point_timestamp_coverage.svg`：点级 `timestamp` 相对点云帧头的时间覆盖图。
+- `timestamp_reading_guide.txt`：三种时间的读取规则。
+
+当前 MRDVS `is_xyz:=2` LiDAR 模式的 `data.timestamp` 是绝对微秒时间，因此点级绝对时间换算为纳秒时应先将微秒值取整，再乘以 `1000`；不要直接对 Epoch 级浮点微秒值乘以 `1000`，以免引入纳秒级浮点误差。帧级时间始终用 `sec * 1_000_000_000 + nanosec`。若换用其他驱动或 `is_xyz:=1`，必须重新确认点字段是否存在以及单位，不能只因字段名也叫 `timestamp` 就沿用微秒换算。
+
 ### 设置、自启和恢复
 
 “设置”页可以修改雷达 IP、IMU 量程、数据包根目录、热点名称和密码。热点名称或密码修改后在下一次热点启动时应用。
@@ -449,6 +488,14 @@ source install/setup.bash
 ```bash
 ./record_bag.sh <bag_name>
 ```
+
+只录制 MRDVS LiDAR 点云、未去畸变 RGB 图像和 IMU 数据：
+
+```bash
+./record_mrdvs_sensor_bag.sh <bag_name>
+```
+
+脚本自动以默认 IP `192.168.100.82` 启动 `lx_lidar_ros.launch.py`，先创建 MCAP 录包订阅，再启动驱动，因此不会遗漏驱动刚启动的数据。数据保存到 `/home/zero/MRDVS_bags/<bag_name>`，只包含 `/lx_camera_node/LxCamera_Cloud`、`/lx_camera_node/LxCamera_Rgb` 和 `/lx_camera_node/LxCamera_Imu`；LiDAR 模式显式关闭 RGBD 对齐、2D 去畸变和 3D 去畸变。按 `Ctrl+C` 会先停止驱动，再安全结束 rosbag 并写入 MCAP 元数据；同名数据包目录会被拒绝覆盖。
 
 录制输出目录为 `~/bag/<bag_name>`。脚本会拒绝覆盖已经存在的同名 bag，录制时按 `Ctrl+C` 停止。
 
@@ -949,6 +996,7 @@ src/fast_livo/config/mrdvs_lidar_imu_init.yaml
 
 ## 更新记录
 
+- 2026-08-03：新增 `record_mrdvs_sensor_bag.sh`，一键启动默认 IP 的 MRDVS LiDAR 驱动并录制点云、未去畸变 RGB 与 IMU 三个话题到 `/home/zero/MRDVS_bags/<bag_name>`；LiDAR launch 现在显式关闭 2D 去畸变。
 - 2026-07-16：MRDVS LiDAR/SLAM 模式固定并读回校验 `LX_INT_XYZ_COORDINATE=0`；设置、读回失败或值不一致时阻止启动数据流，实机确认 SDK 返回 0 且 XYZIRT 点云正常发布。
 - 2026-07-16：PGO RViz 增加 `map` 原点坐标轴、原点 `(0,0,0)` 标签和设备实时 `x/y/z` 数值标签；默认布局精简为单个折叠的 Displays 面板，移除占空间的辅助面板和旧窗口状态。
 - 2026-07-15：PGO 新增 `/pgo/optimized_odom`、`/pgo/optimized_path` 和 `/pgo/optimized_map`；普通建图增量拼接关键帧地图，回环后按优化关键帧重建历史地图，并新增独立 RViz 配置同时显示实时扫描、全局位置/姿态、优化轨迹、优化地图和回环连线；实机静止验证优化位姿约 10Hz、首帧优化地图 3404 点，新 RViz 一键启动和话题订阅正常。
