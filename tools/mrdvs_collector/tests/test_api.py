@@ -183,6 +183,60 @@ def test_start_driver_returns_runtime_snapshot(client: TestClient):
     assert response.json()["driver_state"] == "running"
 
 
+def test_start_driver_returns_recording_selection_and_topics(
+    client: TestClient, runtime: ApplicationRuntime
+):
+    response = client.post(
+        "/api/driver/start",
+        json={
+            "record": True,
+            "bag_name": "compressed-room",
+            "rgb_mode": "compressed",
+            "topic_mode": "selected",
+            "selected_topics": [
+                "/lx_camera_node/LxCamera_Rgb",
+                "/lx_camera_node/LxCamera_Imu",
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["rgb_recording_mode"] == "compressed"
+    assert payload["topic_recording_mode"] == "selected"
+    assert "/lx_camera_node/LxCamera_Rgb/compressed" in payload["recorded_topics"]
+    assert "/tf" in payload["recorded_topics"]
+    assert runtime.controller._runner.commands[0][0] == "compression"
+
+
+def test_selected_topics_must_not_be_empty(client: TestClient):
+    response = client.post(
+        "/api/recording/start",
+        json={
+            "bag_name": "empty-selection",
+            "topic_mode": "selected",
+            "selected_topics": [],
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_unknown_selected_topic_is_rejected(client: TestClient):
+    started = client.post("/api/driver/start", json={"record": False})
+    assert started.status_code == 200
+    response = client.post(
+        "/api/recording/start",
+        json={
+            "bag_name": "unknown-selection",
+            "topic_mode": "selected",
+            "selected_topics": ["/not-an-mrdvs-topic"],
+        },
+    )
+
+    assert response.status_code == 400
+
+
 def test_active_bag_cannot_be_downloaded_or_deleted(client: TestClient):
     started = client.post(
         "/api/driver/start", json={"record": True, "bag_name": "room1"}

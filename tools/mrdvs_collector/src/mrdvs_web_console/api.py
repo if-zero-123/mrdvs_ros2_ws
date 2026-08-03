@@ -192,7 +192,13 @@ def _build_router(runtime: ApplicationRuntime) -> APIRouter:
     @router.post("/driver/start")
     async def start_driver(request: DriverStartRequest):
         return asdict(
-            await runtime.controller.start_driver(request.record, request.bag_name)
+            await runtime.controller.start_driver(
+                request.record,
+                request.bag_name,
+                request.rgb_mode,
+                request.topic_mode,
+                request.selected_topics,
+            )
         )
 
     @router.post("/driver/stop")
@@ -201,7 +207,14 @@ def _build_router(runtime: ApplicationRuntime) -> APIRouter:
 
     @router.post("/recording/start")
     async def start_recording(request: RecordingStartRequest):
-        return asdict(await runtime.controller.start_recording(request.bag_name))
+        return asdict(
+            await runtime.controller.start_recording(
+                request.bag_name,
+                request.rgb_mode,
+                request.topic_mode,
+                request.selected_topics,
+            )
+        )
 
     @router.post("/recording/stop")
     async def stop_recording():

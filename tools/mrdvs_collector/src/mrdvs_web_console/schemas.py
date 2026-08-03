@@ -22,12 +22,24 @@ class DriverStartRequest(StrictRequest):
             raise ValueError("同时录制时必须填写数据包名称")
         return self
 
+    @model_validator(mode="after")
+    def require_selected_topics(self):
+        if self.topic_mode is TopicRecordingMode.SELECTED and not self.selected_topics:
+            raise ValueError("选择话题模式至少要勾选一个话题")
+        return self
+
 
 class RecordingStartRequest(StrictRequest):
     bag_name: str = Field(min_length=1, max_length=80)
     rgb_mode: RgbRecordingMode = RgbRecordingMode.RAW
     topic_mode: TopicRecordingMode = TopicRecordingMode.ALL
     selected_topics: list[str] | None = None
+
+    @model_validator(mode="after")
+    def require_selected_topics(self):
+        if self.topic_mode is TopicRecordingMode.SELECTED and not self.selected_topics:
+            raise ValueError("选择话题模式至少要勾选一个话题")
+        return self
 
 
 class DeleteBagRequest(StrictRequest):

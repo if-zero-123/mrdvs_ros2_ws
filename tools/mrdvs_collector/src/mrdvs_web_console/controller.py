@@ -117,10 +117,10 @@ def resolve_topics(
         source = list(PRESET_TOPICS)
     else:
         if not selected_topics:
-            raise CollectorConflict("选择话题模式至少要勾选一个话题")
+            raise ValueError("选择话题模式至少要勾选一个话题")
         unknown = sorted(set(selected_topics) - set(PRESET_TOPICS))
         if unknown:
-            raise CollectorConflict(f"包含未预置的话题：{', '.join(unknown)}")
+            raise ValueError(f"包含未预置的话题：{', '.join(unknown)}")
         source = list(dict.fromkeys(selected_topics))
 
     if rgb_mode is RgbRecordingMode.COMPRESSED:
