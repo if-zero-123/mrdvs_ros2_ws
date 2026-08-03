@@ -500,7 +500,7 @@ source install/setup.bash
 ./record_mrdvs_sensor_bag.sh <bag_name>
 ```
 
-脚本自动以默认 IP `192.168.100.82` 启动 `lx_lidar_ros.launch.py`，先创建 MCAP 录包订阅，再启动驱动，因此不会遗漏驱动刚启动的数据。数据保存到 `/home/zero/MRDVS_bags/<bag_name>`，只包含 `/lx_camera_node/LxCamera_Cloud`、`/lx_camera_node/LxCamera_Rgb` 和 `/lx_camera_node/LxCamera_Imu`；LiDAR 模式显式关闭 RGBD 对齐、2D 去畸变和 3D 去畸变。按 `Ctrl+C` 会先安全结束 rosbag 并写入 MCAP 元数据，再停止驱动；同名数据包目录会被拒绝覆盖。
+脚本启动前会清理本脚本留下的旧 rosbag、LiDAR launch 和 MRDVS 驱动进程；如果旧进程无法退出，会停止启动新录制。脚本自动以默认 IP `192.168.100.82` 启动 `lx_lidar_ros.launch.py`，先创建 MCAP 录包订阅，再启动驱动，因此不会遗漏驱动刚启动的数据。数据保存到 `/home/zero/MRDVS_bags/<bag_name>`，只包含 `/lx_camera_node/LxCamera_Cloud`、`/lx_camera_node/LxCamera_Rgb` 和 `/lx_camera_node/LxCamera_Imu`；LiDAR 模式显式关闭 RGBD 对齐、2D 去畸变和 3D 去畸变。按 `Ctrl+C` 会先安全结束 rosbag 并写入 MCAP 元数据，再停止驱动；同名数据包目录会被拒绝覆盖。
 
 录制输出目录为 `~/bag/<bag_name>`。脚本会拒绝覆盖已经存在的同名 bag，录制时按 `Ctrl+C` 停止。
 

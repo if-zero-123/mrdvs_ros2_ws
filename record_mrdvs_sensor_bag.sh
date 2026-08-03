@@ -34,6 +34,76 @@ if ! command -v ros2 >/dev/null 2>&1; then
   exit 1
 fi
 
+stop_matching_processes() {
+  local label="$1"
+  local pattern="$2"
+  local -a pids=()
+  local pid
+  local remaining
+
+  mapfile -t pids < <(pgrep -f -- "$pattern" || true)
+  if ((${#pids[@]} == 0)); then
+    return 0
+  fi
+
+  echo "发现旧的${label}进程，正在请求优雅停止..."
+  for pid in "${pids[@]}"; do
+    if [[ "$pid" != "$$" ]] && kill -0 "$pid" 2>/dev/null; then
+      kill -INT "$pid" 2>/dev/null || true
+    fi
+  done
+
+  for _ in {1..20}; do
+    remaining=0
+    for pid in "${pids[@]}"; do
+      if kill -0 "$pid" 2>/dev/null; then
+        remaining=1
+        break
+      fi
+    done
+    if ((remaining == 0)); then
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  echo "${label}进程未在 5 秒内退出，发送 SIGTERM..." >&2
+  for pid in "${pids[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -TERM "$pid" 2>/dev/null || true
+    fi
+  done
+
+  for _ in {1..20}; do
+    remaining=0
+    for pid in "${pids[@]}"; do
+      if kill -0 "$pid" 2>/dev/null; then
+        remaining=1
+        break
+      fi
+    done
+    if ((remaining == 0)); then
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  echo "错误：${label}进程仍未退出，请手动清理后再录制。" >&2
+  return 1
+}
+
+cleanup_stale_sessions() {
+  stop_matching_processes \
+    "旧 rosbag" \
+    "ros2 bag record --storage mcap --output ${bag_root}"
+  stop_matching_processes \
+    "旧 LiDAR 启动进程" \
+    "ros2 launch lx_camera_ros lx_lidar_ros.launch.py ip:=192.168.100.82"
+  stop_matching_processes \
+    "旧 MRDVS 驱动节点" \
+    "/lib/lx_camera_ros/lx_camera_node"
+}
+
 bag_root="${MRDVS_BAG_ROOT:-/home/zero/MRDVS_bags}"
 bag_path="$bag_root/$bag_name"
 if [[ -e "$bag_path" ]]; then
@@ -44,6 +114,7 @@ mkdir -p "$bag_root"
 
 bag_pid=""
 driver_pid=""
+cleanup_stale_sessions
 
 cleanup() {
   local exit_code="$?"

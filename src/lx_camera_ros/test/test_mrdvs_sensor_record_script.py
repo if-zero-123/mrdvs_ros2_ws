@@ -14,7 +14,7 @@ def test_sensor_record_script_records_only_required_topics_with_mcap():
     assert "/lx_camera_node/LxCamera_Cloud" in script_source
     assert "/lx_camera_node/LxCamera_Rgb" in script_source
     assert "/lx_camera_node/LxCamera_Imu" in script_source
-    assert "-a" not in script_source
+    assert "record -a" not in script_source
 
 
 def test_sensor_recording_processes_are_isolated_from_terminal_interrupts():
@@ -30,6 +30,17 @@ def test_cleanup_finalizes_rosbag_before_stopping_driver():
     assert script_source.index('if [[ -n "$bag_pid" ]]') < script_source.index(
         'if [[ -n "$driver_pid" ]]'
     )
+
+
+def test_cleanup_stale_sessions_runs_before_new_recording():
+    script_source = (WORKSPACE_ROOT / "record_mrdvs_sensor_bag.sh").read_text()
+
+    assert "cleanup_stale_sessions" in script_source
+    assert script_source.index("cleanup_stale_sessions") < script_source.index(
+        "setsid ros2 bag record"
+    )
+    assert "ros2 bag record --storage mcap" in script_source
+    assert "ros2 launch lx_camera_ros lx_lidar_ros.launch.py" in script_source
 
 
 def test_lidar_launch_explicitly_disables_2d_undistortion():
