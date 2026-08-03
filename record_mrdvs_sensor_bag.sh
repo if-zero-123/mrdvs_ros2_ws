@@ -41,6 +41,10 @@ stop_matching_processes() {
   local pid
   local remaining
 
+  process_is_alive() {
+    [[ -r "/proc/$1/status" ]] && ! grep -q '^State:[[:space:]]*Z' "/proc/$1/status"
+  }
+
   mapfile -t pids < <(pgrep -f -- "$pattern" || true)
   if ((${#pids[@]} == 0)); then
     return 0
@@ -48,7 +52,7 @@ stop_matching_processes() {
 
   echo "发现旧的${label}进程，正在请求优雅停止..."
   for pid in "${pids[@]}"; do
-    if [[ "$pid" != "$$" ]] && kill -0 "$pid" 2>/dev/null; then
+    if [[ "$pid" != "$$" ]] && process_is_alive "$pid"; then
       kill -INT "$pid" 2>/dev/null || true
     fi
   done
@@ -56,7 +60,7 @@ stop_matching_processes() {
   for _ in {1..20}; do
     remaining=0
     for pid in "${pids[@]}"; do
-      if kill -0 "$pid" 2>/dev/null; then
+      if process_is_alive "$pid"; then
         remaining=1
         break
       fi
@@ -69,7 +73,7 @@ stop_matching_processes() {
 
   echo "${label}进程未在 5 秒内退出，发送 SIGTERM..." >&2
   for pid in "${pids[@]}"; do
-    if kill -0 "$pid" 2>/dev/null; then
+    if process_is_alive "$pid"; then
       kill -TERM "$pid" 2>/dev/null || true
     fi
   done
@@ -77,7 +81,28 @@ stop_matching_processes() {
   for _ in {1..20}; do
     remaining=0
     for pid in "${pids[@]}"; do
-      if kill -0 "$pid" 2>/dev/null; then
+      if process_is_alive "$pid"; then
+        remaining=1
+        break
+      fi
+    done
+    if ((remaining == 0)); then
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  echo "${label}进程仍未退出，发送 SIGKILL 以释放设备控制权..." >&2
+  for pid in "${pids[@]}"; do
+    if process_is_alive "$pid"; then
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
+  done
+
+  for _ in {1..20}; do
+    remaining=0
+    for pid in "${pids[@]}"; do
+      if process_is_alive "$pid"; then
         remaining=1
         break
       fi
@@ -102,6 +127,10 @@ cleanup_stale_sessions() {
   stop_matching_processes \
     "旧 MRDVS 驱动节点" \
     "/lib/lx_camera_ros/lx_camera_node"
+}
+
+run_in_new_session() {
+  setsid bash -c 'trap - INT TERM; exec "$@"' _ "$@"
 }
 
 bag_root="${MRDVS_BAG_ROOT:-/home/zero/MRDVS_bags}"
@@ -143,7 +172,7 @@ trap cleanup EXIT
 trap handle_interrupt INT TERM
 
 echo "rosbag 已准备录制到：$bag_path"
-setsid ros2 bag record \
+run_in_new_session ros2 bag record \
   --storage mcap \
   --output "$bag_path" \
   /lx_camera_node/LxCamera_Cloud \
@@ -159,7 +188,7 @@ if ! kill -0 "$bag_pid" 2>/dev/null; then
 fi
 
 echo "正在以默认 IP 192.168.100.82 启动 MRDVS LiDAR 驱动..."
-setsid ros2 launch lx_camera_ros lx_lidar_ros.launch.py \
+run_in_new_session ros2 launch lx_camera_ros lx_lidar_ros.launch.py \
   ip:=192.168.100.82 \
   enable_rviz:=false &
 driver_pid="$!"

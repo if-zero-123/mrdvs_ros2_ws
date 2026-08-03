@@ -20,8 +20,8 @@ def test_sensor_record_script_records_only_required_topics_with_mcap():
 def test_sensor_recording_processes_are_isolated_from_terminal_interrupts():
     script_source = (WORKSPACE_ROOT / "record_mrdvs_sensor_bag.sh").read_text()
 
-    assert "setsid ros2 bag record" in script_source
-    assert "setsid ros2 launch lx_camera_ros lx_lidar_ros.launch.py" in script_source
+    assert "run_in_new_session ros2 bag record" in script_source
+    assert "run_in_new_session ros2 launch lx_camera_ros lx_lidar_ros.launch.py" in script_source
 
 
 def test_cleanup_finalizes_rosbag_before_stopping_driver():
@@ -37,10 +37,17 @@ def test_cleanup_stale_sessions_runs_before_new_recording():
 
     assert "cleanup_stale_sessions" in script_source
     assert script_source.index("cleanup_stale_sessions") < script_source.index(
-        "setsid ros2 bag record"
+        "run_in_new_session ros2 bag record"
     )
     assert "ros2 bag record --storage mcap" in script_source
     assert "ros2 launch lx_camera_ros lx_lidar_ros.launch.py" in script_source
+
+
+def test_new_processes_restore_interrupt_signal_defaults_and_force_stale_cleanup():
+    script_source = (WORKSPACE_ROOT / "record_mrdvs_sensor_bag.sh").read_text()
+
+    assert "trap - INT TERM" in script_source
+    assert "kill -KILL" in script_source
 
 
 def test_lidar_launch_explicitly_disables_2d_undistortion():
