@@ -53,7 +53,7 @@ def generate_launch_description():
             #{"LX_INT_ALGORITHM_MODE": 0},
             #{"LX_INT_WORK_MODE": 0},
             #{"LX_INT_3D_FPS": 20},
-            {"LX_BOOL_ENABLE_2D_UNDISTORT": 0},
+            {"LX_BOOL_ENABLE_2D_UNDISTORT": 1},
             #{"LX_INT_2D_UNDISTORT_SCALE": 1},
             #{"LX_INT_2D_BINNING_MODE": 0},
             {"LX_BOOL_ENABLE_3D_UNDISTORT": 0},
